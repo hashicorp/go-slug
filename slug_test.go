@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -46,12 +47,18 @@ func TestPack(t *testing.T) {
 			slugSize += hdr.Size
 		}
 
-		if hdr.Name == "sub/foo.txt" {
-			if hdr.Typeflag != tar.TypeSymlink {
-				t.Fatalf("expect symlink for file 'sub/foo.txt'")
+		if hdr.Name == "foo.txt" {
+			if hdr.Typeflag != tar.TypeReg {
+				t.Fatalf("expect symlink 'foo.txt' to be dereferenced")
 			}
-			if hdr.Linkname != "../foo.txt" {
-				t.Fatalf("expect target of '../foo.txt', got %q", hdr.Linkname)
+		}
+
+		if hdr.Name == "sub/bar.txt" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expect symlink for file 'sub/bar.txt'")
+			}
+			if hdr.Linkname != "../bar.txt" {
+				t.Fatalf("expect target of '../bar.txt', got %q", hdr.Linkname)
 			}
 			symFound = true
 		}
@@ -60,6 +67,23 @@ func TestPack(t *testing.T) {
 	// Make sure we saw and handled a symlink
 	if !symFound {
 		t.Fatal("expected to find symlink")
+	}
+
+	// Make sure the .git directory is ignored
+	for _, file := range fileList {
+		if strings.Contains(file, ".git") {
+			t.Fatalf("unexpected .git content: %s", file)
+		}
+	}
+
+	// Make sure the .terraform directory is ignored,
+	// except for the .terraform/modules subdirectory.
+	for _, file := range fileList {
+		if strings.Contains(file, ".terraform") && file != ".terraform/" {
+			if !strings.Contains(file, ".terraform/modules") {
+				t.Fatalf("unexpected .terraform content: %s", file)
+			}
+		}
 	}
 
 	// Check the metadata
@@ -95,14 +119,14 @@ func TestUnarchive(t *testing.T) {
 	// Verify all the files
 	verifyFile(t, filepath.Join(dst, "foo.txt"), 0, "foo\n")
 	verifyFile(t, filepath.Join(dst, "bar.txt"), 0, "bar\n")
+	verifyFile(t, filepath.Join(dst, "sub", "bar.txt"), os.ModeSymlink, "../bar.txt")
 	verifyFile(t, filepath.Join(dst, "sub", "zip.txt"), 0, "zip\n")
-	verifyFile(t, filepath.Join(dst, "sub", "foo.txt"), os.ModeSymlink, "../foo.txt")
 
 	// Check that we can set permissions properly
 	verifyPerms(t, filepath.Join(dst, "foo.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "bar.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "sub", "zip.txt"), 0644)
-	verifyPerms(t, filepath.Join(dst, "sub", "foo.txt"), 0644)
+	verifyPerms(t, filepath.Join(dst, "sub", "bar.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "exe"), 0755)
 }
 
