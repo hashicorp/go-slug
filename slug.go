@@ -20,9 +20,12 @@ type Meta struct {
 }
 
 // Pack creates a slug from a src directory, and writes the new slug
-// to w. If dereference is set to true, symlinks with a target ouside
-// of the src directory will be dereferenced. Returns metadata about
-// the slug and any errors.
+// to w. Returns metadata about the slug and any errors.
+//
+// When dereference is set to true, symlinks with a target outside of
+// the src directory will be dereferenced. When dereference is set to
+// false symlinks with a target outside the src directory are omitted
+// from the slug.
 func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 	// Gzip compress all the output data.
 	gzipW := gzip.NewWriter(w)
