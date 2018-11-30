@@ -13,10 +13,10 @@ import (
 	"testing"
 )
 
-func TestPack(t *testing.T) {
+func TestPackWithDereferencing(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("test-fixtures/archive-dir", slug)
+	meta, err := Pack("test-fixtures/archive-dir", slug, true)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -96,11 +96,96 @@ func TestPack(t *testing.T) {
 	}
 }
 
+func TestPackWithoutDereferencing(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+
+	meta, err := Pack("test-fixtures/archive-dir", slug, false)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipR, err := gzip.NewReader(slug)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	tarR := tar.NewReader(gzipR)
+	var (
+		symFound bool
+		fileList []string
+		slugSize int64
+	)
+
+	for {
+		hdr, err := tarR.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		fileList = append(fileList, hdr.Name)
+		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+			slugSize += hdr.Size
+		}
+
+		if hdr.Name == "sub/bar.txt" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expect symlink for file 'sub/bar.txt'")
+			}
+			if hdr.Linkname != "../bar.txt" {
+				t.Fatalf("expect target of '../bar.txt', got %q", hdr.Linkname)
+			}
+			symFound = true
+		}
+	}
+
+	// Make sure we saw and handled a symlink
+	if !symFound {
+		t.Fatal("expected to find symlink")
+	}
+
+	// Make sure the .git directory is ignored
+	for _, file := range fileList {
+		if strings.Contains(file, ".git") {
+			t.Fatalf("unexpected .git content: %s", file)
+		}
+	}
+
+	// Make sure the .terraform directory is ignored,
+	// except for the .terraform/modules subdirectory.
+	for _, file := range fileList {
+		if strings.Contains(file, ".terraform") && file != ".terraform/" {
+			if !strings.Contains(file, ".terraform/modules") {
+				t.Fatalf("unexpected .terraform content: %s", file)
+			}
+		}
+	}
+
+	// Make sure the the foo.txt symlink is not dereferenced
+	// but is indeed ignored and not added to the archive.
+	for _, file := range fileList {
+		if file == "foo.txt" {
+			t.Fatalf("unexpected dereferenced symlink: %s", file)
+		}
+	}
+
+	// Check the metadata
+	expect := &Meta{
+		Files: fileList,
+		Size:  slugSize,
+	}
+	if !reflect.DeepEqual(meta, expect) {
+		t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", expect, meta)
+	}
+}
+
 func TestUnarchive(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
 
-	if _, err := Pack("test-fixtures/archive-dir", slug); err != nil {
+	if _, err := Pack("test-fixtures/archive-dir", slug, true); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 

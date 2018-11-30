@@ -19,9 +19,11 @@ type Meta struct {
 	Size int64
 }
 
-// Pack creates a slug from a directory src, and writes the new
-// slug to w. Returns metadata about the slug and any errors.
-func Pack(src string, w io.Writer) (*Meta, error) {
+// Pack creates a slug from a src directory, and writes the new slug
+// to w. If dereference is set to true, symlinks with a target ouside
+// of the src directory will be dereferenced. Returns metadata about
+// the slug and any errors.
+func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 	// Gzip compress all the output data.
 	gzipW := gzip.NewWriter(w)
 
@@ -32,7 +34,7 @@ func Pack(src string, w io.Writer) (*Meta, error) {
 	meta := &Meta{}
 
 	// Walk the tree of files.
-	err := filepath.Walk(src, packWalkFn(src, src, src, tarW, meta))
+	err := filepath.Walk(src, packWalkFn(src, src, src, tarW, meta, dereference))
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func Pack(src string, w io.Writer) (*Meta, error) {
 	return meta, nil
 }
 
-func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta) filepath.WalkFunc {
+func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference bool) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -130,6 +132,12 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta) filepath.Wa
 				break
 			}
 
+			if !dereference {
+				// Return early as the symlink has a target outside of the
+				// src directory and we don't want to dereference symlinks.
+				return nil
+			}
+
 			// Get the file info for the target.
 			info, err = os.Lstat(target)
 			if err != nil {
@@ -139,7 +147,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta) filepath.Wa
 			// If the target is a directory we can recurse into the target
 			// directory by calling the packWalkFn with updated arguments.
 			if info.IsDir() {
-				return filepath.Walk(target, packWalkFn(root, target, path, tarW, meta))
+				return filepath.Walk(target, packWalkFn(root, target, path, tarW, meta, dereference))
 			}
 
 			// Dereference this symlink by updating the header with the target file
@@ -186,7 +194,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta) filepath.Wa
 }
 
 // Unpack is used to read and extract the contents of a slug to
-// directory dst. Returns any error.
+// the dst directory. Returns any errors.
 func Unpack(r io.Reader, dst string) error {
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
