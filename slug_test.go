@@ -73,8 +73,10 @@ func TestPack(t *testing.T) {
 	// Make sure the .terraform directory is ignored,
 	// except for the .terraform/modules subdirectory.
 	for _, file := range fileList {
-		if strings.HasPrefix(file, ".terraform"+string(filepath.Separator)) &&
-			!strings.HasPrefix(file, filepath.Clean(".terraform/modules")) {
+		dirPath := filepath.Dir(file)
+		parentDirPath := filepath.Dir(dirPath)
+		if filepath.Base(parentDirPath) == ".terraform" &&
+			filepath.Base(dirPath) != "modules" {
 			t.Fatalf("unexpected .terraform content: %s", file)
 		}
 	}

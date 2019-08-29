@@ -81,13 +81,14 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 		}
 
 		// Ignore any files in the .terraform directory.
-		if !info.IsDir() && filepath.Dir(subpath) == ".terraform" {
+		if !info.IsDir() && filepath.Base(filepath.Dir(subpath)) == ".terraform" {
 			return nil
 		}
 
 		// Skip .terraform subdirectories, except for the modules subdirectory.
-		if strings.HasPrefix(subpath, ".terraform"+string(filepath.Separator)) &&
-			!strings.HasPrefix(subpath, filepath.Clean(".terraform/modules")) {
+		if info.IsDir() &&
+			filepath.Base(filepath.Dir(subpath)) == ".terraform" &&
+			info.Name() != "modules" {
 			return filepath.SkipDir
 		}
 
