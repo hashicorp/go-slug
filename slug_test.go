@@ -16,7 +16,7 @@ import (
 func TestPack(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, true)
+	meta, err := Pack("testdata/archive-dir", "", slug, true)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestPack(t *testing.T) {
 	// Make sure the .terraform directory is ignored,
 	// except for the .terraform/modules subdirectory.
 	for _, file := range fileList {
-		if strings.HasPrefix(file, ".terraform"+string(filepath.Separator)) &&
+		if filepath.Base(filepath.Dir(file)) == ".terraform" &&
 			!strings.HasPrefix(file, filepath.Clean(".terraform/modules")) {
 			t.Fatalf("unexpected .terraform content: %s", file)
 		}
@@ -89,6 +89,18 @@ func TestPack(t *testing.T) {
 	}
 	if !moduleDir {
 		t.Fatal("expected to include .terraform/modules")
+	}
+
+	// Make sure terraform.d is included.
+	terraformDir := false
+	for _, file := range fileList {
+		if strings.HasPrefix(file, filepath.Clean("terraform.d")) {
+			terraformDir = true
+			break
+		}
+	}
+	if !terraformDir {
+		t.Fatal("expected to include terraform.d")
 	}
 
 	// Make sure .terraformrc is included.
@@ -128,7 +140,7 @@ func TestPack(t *testing.T) {
 func TestPackWithDereferencing(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, true)
+	meta, err := Pack("testdata/archive-dir", "", slug, true)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -178,7 +190,7 @@ func TestPackWithDereferencing(t *testing.T) {
 func TestPackWithoutDereferencing(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, false)
+	meta, err := Pack("testdata/archive-dir", "", slug, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -227,11 +239,92 @@ func TestPackWithoutDereferencing(t *testing.T) {
 	}
 }
 
+func TestPackWithMultipleWorkspaces(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+
+	meta, err := Pack("testdata/workspaces-dir", "workspace1", slug, true)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipR, err := gzip.NewReader(slug)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	tarR := tar.NewReader(gzipR)
+	var (
+		fileList []string
+		slugSize int64
+	)
+
+	for {
+		hdr, err := tarR.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		fileList = append(fileList, hdr.Name)
+		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+			slugSize += hdr.Size
+		}
+	}
+
+	// Make sure all .terraform and terraform.d directories are ignored, except for
+	// the workspace1/.terraform/modules and workspace1/terraform.d directories.
+	for _, file := range fileList {
+		if filepath.Base(filepath.Dir(file)) == ".terraform" &&
+			!strings.HasPrefix(file, filepath.Clean("workspace1/.terraform/modules")) {
+			t.Fatalf("unexpected .terraform content: %s", file)
+		}
+		if filepath.Base(filepath.Dir(file)) == "terraform.d" &&
+			!strings.HasPrefix(file, filepath.Clean("workspace1/terraform.d")) {
+			t.Fatalf("unexpected terraform.d directory: %s", file)
+		}
+	}
+
+	// Make sure .terraform/modules is included.
+	moduleDir := false
+	for _, file := range fileList {
+		if strings.HasPrefix(file, filepath.Clean("workspace1/.terraform/modules")) {
+			moduleDir = true
+			break
+		}
+	}
+	if !moduleDir {
+		t.Fatal("expected to include workspace1/.terraform/modules")
+	}
+
+	// Make sure terraform.d is included.
+	terraformDir := false
+	for _, file := range fileList {
+		if strings.HasPrefix(file, filepath.Clean("workspace1/terraform.d")) {
+			terraformDir = true
+			break
+		}
+	}
+	if !terraformDir {
+		t.Fatal("expected to include workspace1/terraform.d")
+	}
+
+	// Check the metadata
+	expect := &Meta{
+		Files: fileList,
+		Size:  slugSize,
+	}
+	if !reflect.DeepEqual(meta, expect) {
+		t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", expect, meta)
+	}
+}
+
 func TestUnarchive(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
 
-	if _, err := Pack("testdata/archive-dir", slug, true); err != nil {
+	if _, err := Pack("testdata/archive-dir", "", slug, true); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 

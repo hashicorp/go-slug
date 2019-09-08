@@ -26,7 +26,7 @@ type Meta struct {
 // the src directory will be dereferenced. When dereference is set to
 // false symlinks with a target outside the src directory are omitted
 // from the slug.
-func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
+func Pack(src, prefix string, w io.Writer, dereference bool) (*Meta, error) {
 	// Gzip compress all the output data.
 	gzipW := gzip.NewWriter(w)
 
@@ -37,7 +37,7 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 	meta := &Meta{}
 
 	// Walk the tree of files.
-	err := filepath.Walk(src, packWalkFn(src, src, src, tarW, meta, dereference))
+	err := filepath.Walk(src, packWalkFn(src, src, src, prefix, tarW, meta, dereference))
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 	return meta, nil
 }
 
-func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference bool) filepath.WalkFunc {
+func packWalkFn(root, src, dst, prefix string, tarW *tar.Writer, meta *Meta, dereference bool) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -75,19 +75,27 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			return nil
 		}
 
-		// Ignore the .terraform directory itself.
-		if info.IsDir() && info.Name() == ".terraform" {
+		// Ignore the .terraform and terraform.d directories.
+		if info.IsDir() && info.Name() == ".terraform" || info.Name() == "terraform.d" {
 			return nil
 		}
 
 		// Ignore any files in the .terraform directory.
-		if !info.IsDir() && filepath.Dir(subpath) == ".terraform" {
+		if !info.IsDir() && filepath.Base(filepath.Dir(subpath)) == ".terraform" {
 			return nil
 		}
 
-		// Skip .terraform subdirectories, except for the modules subdirectory.
-		if strings.HasPrefix(subpath, ".terraform"+string(filepath.Separator)) &&
-			!strings.HasPrefix(subpath, filepath.Clean(".terraform/modules")) {
+		// Ignore any terraform.d subdirectories, except for the
+		// prefixed (can be root) terraform.d subdirectory.
+		if info.IsDir() && filepath.Dir(subpath) == "terraform.d" &&
+			!strings.HasPrefix(subpath, filepath.Join(prefix, "terraform.d")) {
+			return filepath.SkipDir
+		}
+
+		// Ignore .terraform subdirectories, except for the modules
+		// subdirectory of the prefixed (can be root) directory.
+		if info.IsDir() && filepath.Base(filepath.Dir(subpath)) == ".terraform" &&
+			!strings.HasPrefix(subpath, filepath.Join(prefix, filepath.Clean(".terraform/modules"))) {
 			return filepath.SkipDir
 		}
 
@@ -159,7 +167,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			// If the target is a directory we can recurse into the target
 			// directory by calling the packWalkFn with updated arguments.
 			if info.IsDir() {
-				return filepath.Walk(target, packWalkFn(root, target, path, tarW, meta, dereference))
+				return filepath.Walk(target, packWalkFn(root, target, path, prefix, tarW, meta, dereference))
 			}
 
 			// Dereference this symlink by updating the header with the target file
