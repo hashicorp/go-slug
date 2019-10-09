@@ -51,9 +51,6 @@ func readRules(input io.Reader) []rule {
 			rule.excluded = true
 			pattern = pattern[1:]
 		}
-		if len(pattern) > 1 && pattern[0] == '/' && !rule.excluded {
-			pattern = pattern[1:]
-		}
 		rule.val = pattern
 		rule.dirs = strings.Split(pattern, string(os.PathSeparator))
 		rules = append(rules, rule)
