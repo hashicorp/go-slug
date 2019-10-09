@@ -2,8 +2,8 @@ package slug
 
 import (
 	"bufio"
-	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +20,7 @@ func parseIgnoreFile(rootPath string) []rule {
 	if err != nil {
 		// Only show the error debug if an error *other* than IsNotExist
 		if !os.IsNotExist(err) {
-			fmt.Printf("Error reading .terraformignore, default exclusions will apply: %v \n", err)
+			log.Printf("Error reading .terraformignore, default exclusions will apply: %v \n", err)
 		}
 		return defaultExclusions
 	}
@@ -60,7 +60,7 @@ func readRules(input io.Reader) []rule {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error reading .terraformignore, default exclusions will apply: %v \n", err)
+		log.Printf("Error reading .terraformignore, default exclusions will apply: %v \n", err)
 		return defaultExclusions
 	}
 	return rules
@@ -99,11 +99,6 @@ func matchIgnoreRule(path string, rules []rule) bool {
 				if match {
 					break
 				}
-				// From the right
-				match, _ = rule.match(strings.Join(dirSplit[i:], string(os.PathSeparator)))
-				if match {
-					break
-				}
 			}
 		}
 
@@ -124,7 +119,7 @@ func matchIgnoreRule(path string, rules []rule) bool {
 	}
 
 	if matched {
-		fmt.Printf("Skipping excluded path: %s \n", path)
+		log.Printf("Skipping excluded path: %s \n", path)
 	}
 
 	return matched
