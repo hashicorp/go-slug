@@ -51,6 +51,17 @@ func readRules(input io.Reader) []rule {
 			rule.excluded = true
 			pattern = pattern[1:]
 		}
+		// If it is a directory, add ** so we catch descendants
+		if pattern[len(pattern)-1] == os.PathSeparator {
+			pattern = pattern + "**"
+		}
+		// If it starts with /, it is absolute
+		if pattern[0] == os.PathSeparator {
+			pattern = pattern[1:]
+		} else {
+			// Otherwise prepend **/
+			pattern = "**" + string(os.PathSeparator) + pattern
+		}
 		rule.val = pattern
 		rule.dirs = strings.Split(pattern, string(os.PathSeparator))
 		rules = append(rules, rule)
@@ -66,49 +77,8 @@ func readRules(input io.Reader) []rule {
 func matchIgnoreRule(path string, rules []rule) bool {
 	matched := false
 	path = filepath.FromSlash(path)
-	dir, filename := filepath.Split(path)
-	dirSplit := strings.Split(dir, string(os.PathSeparator))
-
 	for _, rule := range rules {
 		match, _ := rule.match(path)
-
-		// If no match, try the filename alone
-		if !match {
-			match, _ = rule.match(filename)
-		}
-
-		if !match {
-			// Filename check for current directory
-			if rule.val[0:1] == "/" && dir == "" {
-				rule.val = rule.val[1:]
-				rule.compile()
-				match, _ = rule.match(filename)
-			}
-		}
-
-		if !match {
-			// Directory checks
-			// Does some combination of its parents match our rule?
-			for i := 0; i < len(dirSplit); i++ {
-				// From the left
-				match, _ = rule.match(strings.Join(dirSplit[:i], string(os.PathSeparator)) + string(os.PathSeparator))
-				// We found a match! stop whilst ahead
-				if match {
-					break
-				}
-			}
-		}
-
-		if !match {
-			// Directory check for current directory
-			// This is a case of say, ignoring terraform.d but NOT ./terraform.d/
-			// Since this munges the regex for this pattern, must happen after other directory checks
-			if rule.val[0] == '/' {
-				rule.val = rule.val[1:]
-				rule.compile()
-				match, _ = rule.match(dir)
-			}
-		}
 
 		if match {
 			matched = !rule.excluded
@@ -218,7 +188,7 @@ func (r *rule) compile() error {
 }
 
 /*
-	Default rules:
+	Default rules as they would appear in .terraformignore:
 	.git/
 	.terraform/
 	!.terraform/modules/
@@ -226,15 +196,15 @@ func (r *rule) compile() error {
 
 var defaultExclusions = []rule{
 	{
-		val:      ".git/",
+		val:      "**/.git/**",
 		excluded: false,
 	},
 	{
-		val:      "**/.terraform/",
+		val:      "**/.terraform/**",
 		excluded: false,
 	},
 	{
-		val:      "**/.terraform/modules/",
+		val:      "**/.terraform/modules/**",
 		excluded: true,
 	},
 }
