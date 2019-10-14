@@ -5,7 +5,7 @@
 # below is an empty line
 
 # ignore a directory
-**/terraform.d/
+terraform.d/
 # exclude ignoring a directory at the root
 !/terraform.d/
 # ignore a file at a subpath
