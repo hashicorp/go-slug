@@ -2,8 +2,8 @@ package slug
 
 import (
 	"bufio"
-	"io"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -137,6 +137,7 @@ func (r *rule) match(path string) (bool, error) {
 	}
 
 	b := r.regex.MatchString(path)
+	debug(path, path, r.regex, b)
 	return b, nil
 }
 
@@ -229,11 +230,20 @@ var defaultExclusions = []rule{
 		excluded: false,
 	},
 	{
-		val:      ".terraform/",
+		val:      "**/.terraform/",
 		excluded: false,
 	},
 	{
-		val:      ".terraform/modules/",
+		val:      "**/.terraform/modules/",
 		excluded: true,
 	},
+}
+
+func debug(path string, message ...interface{}) {
+	debugPath := os.Getenv("TF_IGNORE_DEBUG")
+	if debugPath != "" {
+		if strings.Contains(path, debugPath) {
+			fmt.Println(message...)
+		}
+	}
 }
