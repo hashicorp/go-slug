@@ -86,7 +86,7 @@ func matchIgnoreRule(path string, rules []rule) bool {
 	}
 
 	if matched {
-		debug(path, "Skipping excluded path: ", path)
+		debug(true, path, "Skipping excluded path:", path)
 	}
 
 	return matched
@@ -107,7 +107,7 @@ func (r *rule) match(path string) (bool, error) {
 	}
 
 	b := r.regex.MatchString(path)
-	debug(path, path, r.regex, b)
+	debug(false, path, path, r.regex, b)
 	return b, nil
 }
 
@@ -209,10 +209,16 @@ var defaultExclusions = []rule{
 	},
 }
 
-func debug(path string, message ...interface{}) {
+func debug(printAll bool, path string, message ...interface{}) {
+	logLevel := os.Getenv("TF_IGNORE") == "trace"
 	debugPath := os.Getenv("TF_IGNORE_DEBUG")
-	if debugPath != "" {
-		if strings.Contains(path, debugPath) {
+	isPath := debugPath != ""
+	if isPath {
+		isPath = strings.Contains(path, debugPath)
+	}
+
+	if logLevel {
+		if printAll || isPath {
 			fmt.Println(message...)
 		}
 	}
