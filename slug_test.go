@@ -115,6 +115,18 @@ func TestPack(t *testing.T) {
 		t.Fatal("expected to include foo.terraform/bar.txt")
 	}
 
+	// Make sure baz.txt is excluded.
+	bazTxt := false
+	for _, file := range fileList {
+		if file == filepath.Clean("baz.txt") {
+			bazTxt = true
+			break
+		}
+	}
+	if bazTxt {
+		t.Fatal("should not include baz.txt")
+	}
+
 	// Check the metadata
 	expect := &Meta{
 		Files: fileList,
