@@ -249,13 +249,13 @@ func Unpack(r io.Reader, dst string) error {
 			target := filepath.Join(dir, header.Linkname)
 			if !strings.HasPrefix(target, dst) {
 				return fmt.Errorf("Invalid symlink (%q -> %q) has external target",
-					path, header.Linkname)
+					header.Name, header.Linkname)
 			}
 
 			// Create the symlink.
 			if err := os.Symlink(header.Linkname, path); err != nil {
 				return fmt.Errorf("Failed creating symlink (%q -> %q): %v",
-					path, header.Linkname, err)
+					header.Name, header.Linkname, err)
 			}
 
 			continue
