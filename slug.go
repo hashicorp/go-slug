@@ -125,7 +125,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 
 			// If the target is within the current source, we
 			// create the symlink using a relative path.
-			if strings.Contains(target, src) {
+			if strings.HasPrefix(target, src) {
 				link, err := filepath.Rel(filepath.Dir(path), target)
 				if err != nil {
 					return fmt.Errorf("Failed to get relative path for symlink destination %q: %v", target, err)
@@ -200,8 +200,9 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 	}
 }
 
-// Unpack is used to read and extract the contents of a slug to
-// the dst directory. Returns any errors.
+// Unpack is used to read and extract the contents of a slug to the dst
+// directory. Symlinks within the slug are supported, provided their targets
+// are relative and point to paths within the destination directory.
 func Unpack(r io.Reader, dst string) error {
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
@@ -235,12 +236,28 @@ func Unpack(r io.Reader, dst string) error {
 			return fmt.Errorf("Failed to create directory %q: %v", dir, err)
 		}
 
-		// If we have a symlink, just link it.
+		// Handle symlinks.
 		if header.Typeflag == tar.TypeSymlink {
+			// Disallow absolute targets.
+			if filepath.IsAbs(header.Linkname) {
+				return fmt.Errorf("Invalid symlink (%q -> %q) has absolute target",
+					header.Name, header.Linkname)
+			}
+
+			// Ensure the link target is within the destination directory. This
+			// disallows providing symlinks to external files and directories.
+			target := filepath.Join(dir, header.Linkname)
+			if !strings.HasPrefix(target, dst) {
+				return fmt.Errorf("Invalid symlink (%q -> %q) has external target",
+					path, header.Linkname)
+			}
+
+			// Create the symlink.
 			if err := os.Symlink(header.Linkname, path); err != nil {
-				return fmt.Errorf("Failed creating symlink %q => %q: %v",
+				return fmt.Errorf("Failed creating symlink (%q -> %q): %v",
 					path, header.Linkname, err)
 			}
+
 			continue
 		}
 
