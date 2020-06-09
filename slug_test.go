@@ -239,7 +239,7 @@ func TestPackWithoutDereferencing(t *testing.T) {
 	}
 }
 
-func TestUnarchive(t *testing.T) {
+func TestUnpack(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
 
@@ -273,7 +273,7 @@ func TestUnarchive(t *testing.T) {
 	verifyPerms(t, filepath.Join(dst, "exe"), 0755)
 }
 
-func TestUnarchiveDuplicateNoWritePerm(t *testing.T) {
+func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	dir, err := ioutil.TempDir("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
@@ -339,7 +339,7 @@ func TestUnarchiveDuplicateNoWritePerm(t *testing.T) {
 
 // ensure Unpack returns an error when an unsupported file type is encountered
 // in an archive, rather than silently discarding the data.
-func TestUnarchiveErrorOnUnhandledType(t *testing.T) {
+func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	dir, err := ioutil.TempDir("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
@@ -387,6 +387,86 @@ func TestUnarchiveErrorOnUnhandledType(t *testing.T) {
 	// Now try unpacking it, which should fail
 	if err := Unpack(fh, dst); err == nil {
 		t.Fatalf("should have gotten error unpacking slug with fifo, got none")
+	}
+}
+
+func TestUnpackMaliciousSymlinks(t *testing.T) {
+	tcases := []struct {
+		desc   string
+		target string
+		err    string
+	}{
+		{
+			desc:   "symlink with absolute path",
+			target: "/etc/shadow",
+			err:    "has absolute target",
+		},
+		{
+			desc:   "symlink with external target",
+			target: "../../../../../etc/shadow",
+			err:    "has external target",
+		},
+		{
+			desc:   "symlink with nested external target",
+			target: "foo/bar/baz/../../../../../../../../etc/shadow",
+			err:    "has external target",
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.desc, func(t *testing.T) {
+
+			dir, err := ioutil.TempDir("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer os.RemoveAll(dir)
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			var hdr tar.Header
+
+			hdr.Typeflag = tar.TypeSymlink
+			hdr.Name = "l"
+			hdr.Size = int64(0)
+			hdr.Linkname = tc.target
+
+			tarW.WriteHeader(&hdr)
+
+			tarW.Close()
+			gzipW.Close()
+			wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := ioutil.TempDir(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer os.RemoveAll(dst)
+
+			// Now try unpacking it, which should fail
+			err = Unpack(fh, dst)
+			if err == nil || !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("expected %v, got %v", tc.err, err)
+			}
+		})
 	}
 }
 
