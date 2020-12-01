@@ -252,6 +252,18 @@ func Unpack(r io.Reader, dst string) error {
 					header.Name, header.Linkname)
 			}
 
+			// Ensure the destination is not through any symlinks. This prevents
+			// the zipslip vulnerability.
+			if fi, err := os.Lstat(dir); !os.IsNotExist(err) {
+				if err != nil {
+					return fmt.Errorf("Failed to stat %q: %v", dir, err)
+				}
+				if fi.Mode()&os.ModeSymlink != 0 {
+					return fmt.Errorf("Cannot extract %q through symlink",
+						header.Name)
+				}
+			}
+
 			// Create the symlink.
 			if err := os.Symlink(header.Linkname, path); err != nil {
 				return fmt.Errorf("Failed creating symlink (%q -> %q): %v",

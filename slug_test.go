@@ -391,25 +391,59 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 }
 
 func TestUnpackMaliciousSymlinks(t *testing.T) {
-	tcases := []struct {
-		desc   string
+	type link struct {
+		path   string
 		target string
-		err    string
+	}
+
+	tcases := []struct {
+		desc  string
+		links []link
+		err   string
 	}{
 		{
-			desc:   "symlink with absolute path",
-			target: "/etc/shadow",
-			err:    "has absolute target",
+			desc: "symlink with absolute path",
+			links: []link{
+				{
+					path:   "l",
+					target: "/etc/shadow",
+				},
+			},
+			err: "has absolute target",
 		},
 		{
-			desc:   "symlink with external target",
-			target: "../../../../../etc/shadow",
-			err:    "has external target",
+			desc: "symlink with external target",
+			links: []link{
+				{
+					path:   "l",
+					target: "../../../../../etc/shadow",
+				},
+			},
+			err: "has external target",
 		},
 		{
-			desc:   "symlink with nested external target",
-			target: "foo/bar/baz/../../../../../../../../etc/shadow",
-			err:    "has external target",
+			desc: "symlink with nested external target",
+			links: []link{
+				{
+					path:   "l",
+					target: "foo/bar/baz/../../../../../../../../etc/shadow",
+				},
+			},
+			err: "has external target",
+		},
+		{
+			desc: "zipslip vulnerability",
+			links: []link{
+				{
+					path:   "subdir/parent",
+					target: "..",
+				},
+				{
+					path:   "subdir/parent/escapes",
+					target: "..",
+				},
+			},
+			err: `Cannot extract "subdir/parent/escapes" through symlink`,
 		},
 	}
 
@@ -435,14 +469,16 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			// Tar the file contents
 			tarW := tar.NewWriter(gzipW)
 
-			var hdr tar.Header
+			for _, link := range tc.links {
+				var hdr tar.Header
 
-			hdr.Typeflag = tar.TypeSymlink
-			hdr.Name = "l"
-			hdr.Size = int64(0)
-			hdr.Linkname = tc.target
+				hdr.Typeflag = tar.TypeSymlink
+				hdr.Name = link.path
+				hdr.Size = int64(0)
+				hdr.Linkname = link.target
 
-			tarW.WriteHeader(&hdr)
+				tarW.WriteHeader(&hdr)
+			}
 
 			tarW.Close()
 			gzipW.Close()
