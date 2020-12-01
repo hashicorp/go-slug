@@ -445,6 +445,24 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			},
 			err: `Cannot extract "subdir/parent/escapes" through symlink`,
 		},
+		{
+			desc: "multiple sequential symlinks to confuse detector",
+			links: []link{
+				{
+					path:   "subdir/parent",
+					target: "..",
+				},
+				{
+					path:   "subdir/parent/escape",
+					target: "../..",
+				},
+				{
+					path:   "subdir/parent/escape/root",
+					target: "../../..",
+				},
+			},
+			err: `Cannot extract "subdir/parent/escape" through symlink`,
+		},
 	}
 
 	for _, tc := range tcases {
