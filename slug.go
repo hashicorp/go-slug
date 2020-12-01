@@ -230,6 +230,12 @@ func Unpack(r io.Reader, dst string) error {
 		}
 		path = filepath.Join(dst, path)
 
+		// Check for paths outside our directory, they are forbidden
+		target := filepath.Clean(path)
+		if !strings.HasPrefix(target, dst) {
+			return fmt.Errorf("Invalid filename, traversal with \"..\" outside of current directory")
+		}
+
 		// Make the directories to the path.
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {

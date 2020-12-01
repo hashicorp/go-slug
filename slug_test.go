@@ -524,6 +524,83 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 	}
 }
 
+func TestUnpackMaliciousFiles(t *testing.T) {
+	tcases := []struct {
+		desc string
+		name string
+		err  string
+	}{
+		{
+			desc: "filename containing path traversal",
+			name: "../../../../../../../../tmp/test",
+			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+		},
+		{
+			desc: "should fail before attempting to create directories",
+			name: "../../../../../../../../Users/root",
+			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir, err := ioutil.TempDir("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer os.RemoveAll(dir)
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			hdr := &tar.Header{
+				Name: tc.name,
+				Mode: 0600,
+				Size: int64(0),
+			}
+			if err := tarW.WriteHeader(hdr); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if _, err := tarW.Write([]byte{}); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			tarW.Close()
+			gzipW.Close()
+			wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := ioutil.TempDir(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer os.RemoveAll(dst)
+
+			// Now try unpacking it, which should fail
+			err = Unpack(fh, dst)
+			if err == nil || !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("expected %v, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
 func TestCheckFileMode(t *testing.T) {
 	for _, tc := range []struct {
 		desc string
