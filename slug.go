@@ -236,6 +236,38 @@ func Unpack(r io.Reader, dst string) error {
 			return fmt.Errorf("Invalid filename, traversal with \"..\" outside of current directory")
 		}
 
+		// Ensure the destination is not through any symlinks. This prevents
+		// any files from being deployed through symlinks defined in the slug.
+		// There are malicious cases where this could be used to escape the
+		// slug's boundaries (zipslip), and any legitimate use is questionable
+		// and likely indicates a hand-crafted tar file, which we are not in
+		// the business of supporting here.
+		//
+		// The strategy is to Lstat each path  component from dst up to the
+		// immediate parent directory of the file name in the tarball, checking
+		// the mode on each to ensure we wouldn't be passing through any
+		// symlinks.
+		currentPath := dst // Start at the root of the unpacked tarball.
+		components := strings.Split(header.Name, "/")
+
+		for i := 0; i < len(components)-1; i++ {
+			currentPath = filepath.Join(currentPath, components[i])
+			fi, err := os.Lstat(currentPath)
+			if os.IsNotExist(err) {
+				// Parent directory structure is incomplete. Technically this
+				// means from here upward cannot be a symlink, so we cancel the
+				// remaining path tests.
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("Failed to evaluate path %q: %v", header.Name, err)
+			}
+			if fi.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("Cannot extract %q through symlink",
+					header.Name)
+			}
+		}
+
 		// Make the directories to the path.
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -256,31 +288,6 @@ func Unpack(r io.Reader, dst string) error {
 			if !strings.HasPrefix(target, dst) {
 				return fmt.Errorf("Invalid symlink (%q -> %q) has external target",
 					header.Name, header.Linkname)
-			}
-
-			// Ensure the destination is not through any symlinks. This
-			// prevents the zipslip vulnerability.
-			//
-			// The strategy is to Lstat each path  component from dst up to the
-			// immediate parent directory of the file name in the tarball,
-			// checking the mode on each to ensure we wouldn't be passing
-			// through any symlinks.
-			currentPath := dst // Start at the root of the unpacked tarball.
-			components := strings.Split(header.Name, "/")
-
-			for i := 0; i < len(components)-1; i++ {
-				currentPath = filepath.Join(currentPath, components[i])
-				fi, err := os.Lstat(currentPath)
-				if os.IsNotExist(err) {
-					continue
-				}
-				if err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("Failed to evaluate symlink: %v", err)
-				}
-				if fi.Mode()&os.ModeSymlink != 0 {
-					return fmt.Errorf("Cannot extract %q through symlink",
-						header.Name)
-				}
 			}
 
 			// Create the symlink.

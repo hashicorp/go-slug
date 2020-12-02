@@ -391,73 +391,105 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 }
 
 func TestUnpackMaliciousSymlinks(t *testing.T) {
-	type link struct {
-		path   string
-		target string
-	}
-
 	tcases := []struct {
-		desc  string
-		links []link
-		err   string
+		desc    string
+		headers []*tar.Header
+		err     string
 	}{
 		{
 			desc: "symlink with absolute path",
-			links: []link{
-				{
-					path:   "l",
-					target: "/etc/shadow",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "/etc/shadow",
+					Typeflag: tar.TypeSymlink,
 				},
 			},
 			err: "has absolute target",
 		},
 		{
 			desc: "symlink with external target",
-			links: []link{
-				{
-					path:   "l",
-					target: "../../../../../etc/shadow",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "../../../../../etc/shadow",
+					Typeflag: tar.TypeSymlink,
 				},
 			},
 			err: "has external target",
 		},
 		{
 			desc: "symlink with nested external target",
-			links: []link{
-				{
-					path:   "l",
-					target: "foo/bar/baz/../../../../../../../../etc/shadow",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "foo/bar/baz/../../../../../../../../etc/shadow",
+					Typeflag: tar.TypeSymlink,
 				},
 			},
 			err: "has external target",
 		},
 		{
 			desc: "zipslip vulnerability",
-			links: []link{
-				{
-					path:   "subdir/parent",
-					target: "..",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
 				},
-				{
-					path:   "subdir/parent/escapes",
-					target: "..",
+				&tar.Header{
+					Name:     "subdir/parent/escapes",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
 				},
 			},
 			err: `Cannot extract "subdir/parent/escapes" through symlink`,
 		},
 		{
-			desc: "multiple sequential symlinks to confuse detector",
-			links: []link{
-				{
-					path:   "subdir/parent",
-					target: "..",
+			desc: "nested symlinks within symlinked dir",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
 				},
-				{
-					path:   "subdir/parent/otherdir/escapes",
-					target: "../..",
+				&tar.Header{
+					Name:     "subdir/parent/otherdir/escapes",
+					Linkname: "../..",
+					Typeflag: tar.TypeSymlink,
 				},
 			},
 			err: `Cannot extract "subdir/parent/otherdir/escapes" through symlink`,
+		},
+		{
+			desc: "regular file through symlink",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/file",
+					Typeflag: tar.TypeReg,
+				},
+			},
+			err: `Cannot extract "subdir/parent/file" through symlink`,
+		},
+		{
+			desc: "directory through symlink",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/dir",
+					Typeflag: tar.TypeDir,
+				},
+			},
+			err: `Cannot extract "subdir/parent/dir" through symlink`,
 		},
 	}
 
@@ -483,15 +515,8 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			// Tar the file contents
 			tarW := tar.NewWriter(gzipW)
 
-			for _, link := range tc.links {
-				var hdr tar.Header
-
-				hdr.Typeflag = tar.TypeSymlink
-				hdr.Name = link.path
-				hdr.Size = int64(0)
-				hdr.Linkname = link.target
-
-				tarW.WriteHeader(&hdr)
+			for _, hdr := range tc.headers {
+				tarW.WriteHeader(hdr)
 			}
 
 			tarW.Close()
