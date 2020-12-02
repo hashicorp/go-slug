@@ -453,15 +453,11 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					target: "..",
 				},
 				{
-					path:   "subdir/parent/escape",
+					path:   "subdir/parent/otherdir/escapes",
 					target: "../..",
 				},
-				{
-					path:   "subdir/parent/escape/root",
-					target: "../../..",
-				},
 			},
-			err: `Cannot extract "subdir/parent/escape" through symlink`,
+			err: `Cannot extract "subdir/parent/otherdir/escapes" through symlink`,
 		},
 	}
 
