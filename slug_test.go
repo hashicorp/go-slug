@@ -392,24 +392,104 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 
 func TestUnpackMaliciousSymlinks(t *testing.T) {
 	tcases := []struct {
-		desc   string
-		target string
-		err    string
+		desc    string
+		headers []*tar.Header
+		err     string
 	}{
 		{
-			desc:   "symlink with absolute path",
-			target: "/etc/shadow",
-			err:    "has absolute target",
+			desc: "symlink with absolute path",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "/etc/shadow",
+					Typeflag: tar.TypeSymlink,
+				},
+			},
+			err: "has absolute target",
 		},
 		{
-			desc:   "symlink with external target",
-			target: "../../../../../etc/shadow",
-			err:    "has external target",
+			desc: "symlink with external target",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "../../../../../etc/shadow",
+					Typeflag: tar.TypeSymlink,
+				},
+			},
+			err: "has external target",
 		},
 		{
-			desc:   "symlink with nested external target",
-			target: "foo/bar/baz/../../../../../../../../etc/shadow",
-			err:    "has external target",
+			desc: "symlink with nested external target",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "l",
+					Linkname: "foo/bar/baz/../../../../../../../../etc/shadow",
+					Typeflag: tar.TypeSymlink,
+				},
+			},
+			err: "has external target",
+		},
+		{
+			desc: "zipslip vulnerability",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/escapes",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+			},
+			err: `Cannot extract "subdir/parent/escapes" through symlink`,
+		},
+		{
+			desc: "nested symlinks within symlinked dir",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/otherdir/escapes",
+					Linkname: "../..",
+					Typeflag: tar.TypeSymlink,
+				},
+			},
+			err: `Cannot extract "subdir/parent/otherdir/escapes" through symlink`,
+		},
+		{
+			desc: "regular file through symlink",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/file",
+					Typeflag: tar.TypeReg,
+				},
+			},
+			err: `Cannot extract "subdir/parent/file" through symlink`,
+		},
+		{
+			desc: "directory through symlink",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "subdir/parent",
+					Linkname: "..",
+					Typeflag: tar.TypeSymlink,
+				},
+				&tar.Header{
+					Name:     "subdir/parent/dir",
+					Typeflag: tar.TypeDir,
+				},
+			},
+			err: `Cannot extract "subdir/parent/dir" through symlink`,
 		},
 	}
 
@@ -435,14 +515,86 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			// Tar the file contents
 			tarW := tar.NewWriter(gzipW)
 
-			var hdr tar.Header
+			for _, hdr := range tc.headers {
+				tarW.WriteHeader(hdr)
+			}
 
-			hdr.Typeflag = tar.TypeSymlink
-			hdr.Name = "l"
-			hdr.Size = int64(0)
-			hdr.Linkname = tc.target
+			tarW.Close()
+			gzipW.Close()
+			wfh.Close()
 
-			tarW.WriteHeader(&hdr)
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := ioutil.TempDir(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer os.RemoveAll(dst)
+
+			// Now try unpacking it, which should fail
+			err = Unpack(fh, dst)
+			if err == nil || !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("expected %v, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
+func TestUnpackMaliciousFiles(t *testing.T) {
+	tcases := []struct {
+		desc string
+		name string
+		err  string
+	}{
+		{
+			desc: "filename containing path traversal",
+			name: "../../../../../../../../tmp/test",
+			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+		},
+		{
+			desc: "should fail before attempting to create directories",
+			name: "../../../../../../../../Users/root",
+			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir, err := ioutil.TempDir("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer os.RemoveAll(dir)
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			hdr := &tar.Header{
+				Name: tc.name,
+				Mode: 0600,
+				Size: int64(0),
+			}
+			if err := tarW.WriteHeader(hdr); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if _, err := tarW.Write([]byte{}); err != nil {
+				t.Fatalf("err: %v", err)
+			}
 
 			tarW.Close()
 			gzipW.Close()
