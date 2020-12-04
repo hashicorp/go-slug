@@ -1,10 +1,9 @@
-name: "Code scanning - action"
+name: "Code scanning - scheduled (weekly) or on-demand"
 
 on:
-  push:
-    branches: [ enable-gh-code-scanning ]
-  pull_request:
-    branches: [ enable-gh-code-scanning ]
+  schedule:
+    - cron: '0 15 * * 0'
+  workflow_dispatch:
 
 jobs:
   CodeQL-Build:
