@@ -20,14 +20,12 @@ type Meta struct {
 }
 
 // IllegalSlugError indicates the provided slug (io.Writer for Pack, io.Reader
-// for Unpack) validates a rule about its contents. For example, an absolute or
-// external symlink.
+// for Unpack) violates a rule about its contents. For example, an absolute or
+// external symlink. It implements the error interface.
 type IllegalSlugError struct {
 	Err error
 }
 
-// Error implements the error interface by returning an error string about the
-// issue with the underlying error.
 func (e *IllegalSlugError) Error() string {
 	return fmt.Sprintf("illegal slug error: %v", e.Err)
 }
