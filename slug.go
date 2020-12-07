@@ -19,6 +19,23 @@ type Meta struct {
 	Size int64
 }
 
+// IllegalSlugError indicates the provided slug (io.Writer for Pack, io.Reader
+// for Unpack) validates a rule about its contents. For example, an absolute or
+// external symlink.
+type IllegalSlugError struct {
+	Err error
+}
+
+// Error implements the error interface by returning an error string about the
+// issue with the underlying error.
+func (e *IllegalSlugError) Error() string {
+	return fmt.Sprintf("illegal slug error: %v", e.Err)
+}
+
+// Unwrap returns the underlying issue with the provided Slug into the error
+// chain.
+func (e *IllegalSlugError) Unwrap() error { return e.Err }
+
 // Pack creates a slug from a src directory, and writes the new slug
 // to w. Returns metadata about the slug and any errors.
 //
@@ -48,12 +65,12 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 
 	// Flush the tar writer.
 	if err := tarW.Close(); err != nil {
-		return nil, fmt.Errorf("Failed to close the tar archive: %v", err)
+		return nil, fmt.Errorf("failed to close the tar archive: %w", err)
 	}
 
 	// Flush the gzip writer.
 	if err := gzipW.Close(); err != nil {
-		return nil, fmt.Errorf("Failed to close the gzip writer: %v", err)
+		return nil, fmt.Errorf("failed to close the gzip writer: %w", err)
 	}
 
 	return meta, nil
@@ -68,7 +85,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 		// Get the relative path from the current src directory.
 		subpath, err := filepath.Rel(src, path)
 		if err != nil {
-			return fmt.Errorf("Failed to get relative path for file %q: %v", path, err)
+			return fmt.Errorf("failed to get relative path for file %q: %w", path, err)
 		}
 		if subpath == "." {
 			return nil
@@ -89,7 +106,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 		// Get the relative path from the initial root directory.
 		subpath, err = filepath.Rel(root, strings.Replace(path, src, dst, 1))
 		if err != nil {
-			return fmt.Errorf("Failed to get relative path for file %q: %v", path, err)
+			return fmt.Errorf("failed to get relative path for file %q: %w", path, err)
 		}
 		if subpath == "." {
 			return nil
@@ -120,7 +137,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 		case fm&os.ModeSymlink != 0:
 			target, err := filepath.EvalSymlinks(path)
 			if err != nil {
-				return fmt.Errorf("Failed to get symbolic link destination for %q: %v", path, err)
+				return fmt.Errorf("failed to get symbolic link destination for %q: %w", path, err)
 			}
 
 			// If the target is within the current source, we
@@ -128,7 +145,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			if strings.HasPrefix(target, src) {
 				link, err := filepath.Rel(filepath.Dir(path), target)
 				if err != nil {
-					return fmt.Errorf("Failed to get relative path for symlink destination %q: %v", target, err)
+					return fmt.Errorf("failed to get relative path for symlink destination %q: %w", target, err)
 				}
 
 				header.Typeflag = tar.TypeSymlink
@@ -148,7 +165,7 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			// Get the file info for the target.
 			info, err = os.Lstat(target)
 			if err != nil {
-				return fmt.Errorf("Failed to get file info from file %q: %v", target, err)
+				return fmt.Errorf("failed to get file info from file %q: %w", target, err)
 			}
 
 			// If the target is a directory we can recurse into the target
@@ -166,12 +183,12 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			writeBody = true
 
 		default:
-			return fmt.Errorf("Unexpected file mode %v", fm)
+			return fmt.Errorf("unexpected file mode %v", fm)
 		}
 
 		// Write the header first to the archive.
 		if err := tarW.WriteHeader(header); err != nil {
-			return fmt.Errorf("Failed writing archive header for file %q: %v", path, err)
+			return fmt.Errorf("failed writing archive header for file %q: %w", path, err)
 		}
 
 		// Account for the file in the list.
@@ -184,13 +201,13 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 
 		f, err := os.Open(path)
 		if err != nil {
-			return fmt.Errorf("Failed opening file %q for archiving: %v", path, err)
+			return fmt.Errorf("failed opening file %q for archiving: %w", path, err)
 		}
 		defer f.Close()
 
 		size, err := io.Copy(tarW, f)
 		if err != nil {
-			return fmt.Errorf("Failed copying file %q to archive: %v", path, err)
+			return fmt.Errorf("failed copying file %q to archive: %w", path, err)
 		}
 
 		// Add the size we copied to the body.
@@ -207,7 +224,7 @@ func Unpack(r io.Reader, dst string) error {
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("Failed to uncompress slug: %v", err)
+		return fmt.Errorf("failed to uncompress slug: %w", err)
 	}
 
 	// Untar as we read.
@@ -220,7 +237,7 @@ func Unpack(r io.Reader, dst string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("Failed to untar slug: %v", err)
+			return fmt.Errorf("failed to untar slug: %w", err)
 		}
 
 		// Get rid of absolute paths.
@@ -233,7 +250,9 @@ func Unpack(r io.Reader, dst string) error {
 		// Check for paths outside our directory, they are forbidden
 		target := filepath.Clean(path)
 		if !strings.HasPrefix(target, dst) {
-			return fmt.Errorf("Invalid filename, traversal with \"..\" outside of current directory")
+			return &IllegalSlugError{
+				Err: fmt.Errorf("invalid filename, traversal with \"..\" outside of current directory"),
+			}
 		}
 
 		// Ensure the destination is not through any symlinks. This prevents
@@ -260,39 +279,48 @@ func Unpack(r io.Reader, dst string) error {
 				break
 			}
 			if err != nil {
-				return fmt.Errorf("Failed to evaluate path %q: %v", header.Name, err)
+				return fmt.Errorf("failed to evaluate path %q: %w", header.Name, err)
 			}
 			if fi.Mode()&os.ModeSymlink != 0 {
-				return fmt.Errorf("Cannot extract %q through symlink",
-					header.Name)
+				return &IllegalSlugError{
+					Err: fmt.Errorf("cannot extract %q through symlink", header.Name),
+				}
 			}
 		}
 
 		// Make the directories to the path.
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("Failed to create directory %q: %v", dir, err)
+			return fmt.Errorf("failed to create directory %q: %w", dir, err)
 		}
 
 		// Handle symlinks.
 		if header.Typeflag == tar.TypeSymlink {
 			// Disallow absolute targets.
 			if filepath.IsAbs(header.Linkname) {
-				return fmt.Errorf("Invalid symlink (%q -> %q) has absolute target",
-					header.Name, header.Linkname)
+				return &IllegalSlugError{
+					Err: fmt.Errorf(
+						"invalid symlink (%q -> %q) has absolute target",
+						header.Name, header.Linkname,
+					),
+				}
 			}
 
 			// Ensure the link target is within the destination directory. This
 			// disallows providing symlinks to external files and directories.
 			target := filepath.Join(dir, header.Linkname)
 			if !strings.HasPrefix(target, dst) {
-				return fmt.Errorf("Invalid symlink (%q -> %q) has external target",
-					header.Name, header.Linkname)
+				return &IllegalSlugError{
+					Err: fmt.Errorf(
+						"invalid symlink (%q -> %q) has external target",
+						header.Name, header.Linkname,
+					),
+				}
 			}
 
 			// Create the symlink.
 			if err := os.Symlink(header.Linkname, path); err != nil {
-				return fmt.Errorf("Failed creating symlink (%q -> %q): %v",
+				return fmt.Errorf("failed creating symlink (%q -> %q): %w",
 					header.Name, header.Linkname, err)
 			}
 
@@ -303,7 +331,7 @@ func Unpack(r io.Reader, dst string) error {
 		if header.Typeflag == tar.TypeDir {
 			continue
 		} else if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
-			return fmt.Errorf("Failed creating %q: unsupported type %c", path,
+			return fmt.Errorf("failed creating %q: unsupported type %c", path,
 				header.Typeflag)
 		}
 
@@ -319,7 +347,7 @@ func Unpack(r io.Reader, dst string) error {
 			}
 
 			if err != nil {
-				return fmt.Errorf("Failed creating file %q: %v", path, err)
+				return fmt.Errorf("failed creating file %q: %w", path, err)
 			}
 		}
 
@@ -327,14 +355,14 @@ func Unpack(r io.Reader, dst string) error {
 		_, err = io.Copy(fh, untar)
 		fh.Close()
 		if err != nil {
-			return fmt.Errorf("Failed to copy slug file %q: %v", path, err)
+			return fmt.Errorf("failed to copy slug file %q: %w", path, err)
 		}
 
 		// Restore the file mode. We have to do this after writing the file,
 		// since it is possible we have a read-only mode.
 		mode := header.FileInfo().Mode()
 		if err := os.Chmod(path, mode); err != nil {
-			return fmt.Errorf("Failed setting permissions on %q: %v", path, err)
+			return fmt.Errorf("failed setting permissions on %q: %w", path, err)
 		}
 	}
 	return nil

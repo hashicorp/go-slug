@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -443,7 +444,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					Typeflag: tar.TypeSymlink,
 				},
 			},
-			err: `Cannot extract "subdir/parent/escapes" through symlink`,
+			err: `cannot extract "subdir/parent/escapes" through symlink`,
 		},
 		{
 			desc: "nested symlinks within symlinked dir",
@@ -459,7 +460,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					Typeflag: tar.TypeSymlink,
 				},
 			},
-			err: `Cannot extract "subdir/parent/otherdir/escapes" through symlink`,
+			err: `cannot extract "subdir/parent/otherdir/escapes" through symlink`,
 		},
 		{
 			desc: "regular file through symlink",
@@ -474,7 +475,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					Typeflag: tar.TypeReg,
 				},
 			},
-			err: `Cannot extract "subdir/parent/file" through symlink`,
+			err: `cannot extract "subdir/parent/file" through symlink`,
 		},
 		{
 			desc: "directory through symlink",
@@ -489,7 +490,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					Typeflag: tar.TypeDir,
 				},
 			},
-			err: `Cannot extract "subdir/parent/dir" through symlink`,
+			err: `cannot extract "subdir/parent/dir" through symlink`,
 		},
 	}
 
@@ -537,9 +538,10 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			defer os.RemoveAll(dst)
 
 			// Now try unpacking it, which should fail
+			var e *IllegalSlugError
 			err = Unpack(fh, dst)
-			if err == nil || !strings.Contains(err.Error(), tc.err) {
-				t.Fatalf("expected %v, got %v", tc.err, err)
+			if err == nil || !errors.As(err, &e) || !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("expected *IllegalSlugError %v, got %T %v", tc.err, err, err)
 			}
 		})
 	}
@@ -554,12 +556,12 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 		{
 			desc: "filename containing path traversal",
 			name: "../../../../../../../../tmp/test",
-			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+			err:  "invalid filename, traversal with \"..\" outside of current directory",
 		},
 		{
 			desc: "should fail before attempting to create directories",
 			name: "../../../../../../../../Users/root",
-			err:  "Invalid filename, traversal with \"..\" outside of current directory",
+			err:  "invalid filename, traversal with \"..\" outside of current directory",
 		},
 	}
 
@@ -614,9 +616,10 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 			defer os.RemoveAll(dst)
 
 			// Now try unpacking it, which should fail
+			var e *IllegalSlugError
 			err = Unpack(fh, dst)
-			if err == nil || !strings.Contains(err.Error(), tc.err) {
-				t.Fatalf("expected %v, got %v", tc.err, err)
+			if err == nil || !errors.As(err, &e) || !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("expected *IllegalSlugError %v, got %T %v", tc.err, err, err)
 			}
 		})
 	}
