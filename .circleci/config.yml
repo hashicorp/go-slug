@@ -1,0 +1,16 @@
+version: 2
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - test
+      
+jobs:
+  test:
+    docker:
+      - image: docker.mirror.hashicorp.services/cimg/go:1.15
+
+    steps:
+      - checkout
+      - run: go test -race ./...
