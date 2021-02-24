@@ -240,6 +240,77 @@ func TestPackWithoutDereferencing(t *testing.T) {
 	}
 }
 
+func TestPackWithoutIgnoring(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+
+	p, err := NewPacker(BypassIgnore())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	meta, err := p.Pack("testdata/archive-dir", slug)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipR, err := gzip.NewReader(slug)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	tarR := tar.NewReader(gzipR)
+	var (
+		fileList []string
+		slugSize int64
+	)
+
+	for {
+		hdr, err := tarR.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		fileList = append(fileList, hdr.Name)
+		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+			slugSize += hdr.Size
+		}
+	}
+
+	// baz.txt would normally be ignored, but should not be
+	var bazFound bool
+	for _, file := range fileList {
+		if file == "baz.txt" {
+			bazFound = true
+		}
+	}
+	if !bazFound {
+		t.Fatal("expected file baz.txt to be present, but not found")
+	}
+
+	// .terraform/file.txt would normally be ignored, but should not be
+	var dotTerraformFileFound bool
+	for _, file := range fileList {
+		if file == ".terraform/file.txt" {
+			dotTerraformFileFound = true
+		}
+	}
+	if !dotTerraformFileFound {
+		t.Fatal("expected file .terraform/file.txt to be present, but not found")
+	}
+
+	// Check the metadata
+	expect := &Meta{
+		Files: fileList,
+		Size:  slugSize,
+	}
+	if !reflect.DeepEqual(meta, expect) {
+		t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", expect, meta)
+	}
+}
+
 func TestUnpack(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
@@ -642,6 +713,55 @@ func TestCheckFileMode(t *testing.T) {
 			if keep != tc.keep || body != tc.body {
 				t.Fatalf("expect (%v, %v), got (%v, %v)",
 					tc.keep, tc.body, keep, body)
+			}
+		})
+	}
+}
+
+func TestNewPacker(t *testing.T) {
+	for _, tc := range []struct {
+		desc    string
+		options []PackerOption
+		expect  *Packer
+	}{
+		{
+			desc: "defaults",
+			expect: &Packer{
+				dereference:  false,
+				bypassIgnore: false,
+			},
+		},
+		{
+			desc:    "enable dereferencing",
+			options: []PackerOption{DereferenceSymlinks()},
+			expect: &Packer{
+				dereference: true,
+			},
+		},
+		{
+			desc:    "disable .terraformignore",
+			options: []PackerOption{BypassIgnore()},
+			expect: &Packer{
+				bypassIgnore: true,
+			},
+		},
+		{
+			desc:    "multiple options",
+			options: []PackerOption{BypassIgnore(), DereferenceSymlinks()},
+			expect: &Packer{
+				dereference:  true,
+				bypassIgnore: true,
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			p, err := NewPacker(tc.options...)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			if !reflect.DeepEqual(p, tc.expect) {
+				t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", p, tc.expect)
 			}
 		})
 	}
