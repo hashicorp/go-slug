@@ -243,7 +243,9 @@ func TestPackWithoutDereferencing(t *testing.T) {
 func TestPackWithoutIgnoring(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	p, err := NewPacker(BypassIgnore())
+	// By default NewPacker() creates a Packer that does not use
+	// .terraformignore or dereference symlinks.
+	p, err := NewPacker()
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -727,8 +729,8 @@ func TestNewPacker(t *testing.T) {
 		{
 			desc: "defaults",
 			expect: &Packer{
-				dereference:  false,
-				bypassIgnore: false,
+				dereference: false,
+				applyIgnore: false,
 			},
 		},
 		{
@@ -739,18 +741,18 @@ func TestNewPacker(t *testing.T) {
 			},
 		},
 		{
-			desc:    "disable .terraformignore",
-			options: []PackerOption{BypassIgnore()},
+			desc:    "apply .terraformignore",
+			options: []PackerOption{ApplyIgnore()},
 			expect: &Packer{
-				bypassIgnore: true,
+				applyIgnore: true,
 			},
 		},
 		{
 			desc:    "multiple options",
-			options: []PackerOption{BypassIgnore(), DereferenceSymlinks()},
+			options: []PackerOption{ApplyIgnore(), DereferenceSymlinks()},
 			expect: &Packer{
-				dereference:  true,
-				bypassIgnore: true,
+				dereference: true,
+				applyIgnore: true,
 			},
 		},
 	} {
