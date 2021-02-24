@@ -77,6 +77,14 @@ func NewPacker(options ...PackerOption) (*Packer, error) {
 	return p, nil
 }
 
+// Pack at the package level is used to maintain compatibility with existing
+// code that relies on this function signature. New options related to packing
+// slugs should be added to the Packer struct instead.
+func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
+	p := Packer{dereference: dereference}
+	return p.Pack(src, w)
+}
+
 // Pack creates a slug from a src directory, and writes the new slug
 // to w. Returns metadata about the slug and any errors.
 //
