@@ -17,7 +17,12 @@ import (
 func TestPack(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, true)
+	p, err := NewPacker(DereferenceSymlinks())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	meta, err := p.Pack("testdata/archive-dir", slug)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -141,7 +146,12 @@ func TestPack(t *testing.T) {
 func TestPackWithDereferencing(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, true)
+	p, err := NewPacker(DereferenceSymlinks())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	meta, err := p.Pack("testdata/archive-dir", slug)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -191,7 +201,12 @@ func TestPackWithDereferencing(t *testing.T) {
 func TestPackWithoutDereferencing(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
-	meta, err := Pack("testdata/archive-dir", slug, false)
+	p, err := NewPacker()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	meta, err := p.Pack("testdata/archive-dir", slug)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -244,7 +259,12 @@ func TestUnpack(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
 
-	if _, err := Pack("testdata/archive-dir", slug, true); err != nil {
+	p, err := NewPacker(DereferenceSymlinks())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if _, err := p.Pack("testdata/archive-dir", slug); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
