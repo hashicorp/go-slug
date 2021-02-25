@@ -37,11 +37,11 @@ func (e *IllegalSlugError) Unwrap() error { return e.Err }
 // PackerOption is a functional option that can configure non-default Packers.
 type PackerOption func(*Packer) error
 
-// ApplyIgnore is a PackerOption that will apply the .terraformignore rules and
-// skip packing files it specifies.
-func ApplyIgnore() PackerOption {
+// ApplyTerraformIgnore is a PackerOption that will apply the .terraformignore
+// rules and skip packing files it specifies.
+func ApplyTerraformIgnore() PackerOption {
 	return func(p *Packer) error {
-		p.applyIgnore = true
+		p.applyTerraformIgnore = true
 		return nil
 	}
 }
@@ -57,15 +57,15 @@ func DereferenceSymlinks() PackerOption {
 
 // Packer holds options for the Pack function.
 type Packer struct {
-	dereference bool
-	applyIgnore bool
+	dereference          bool
+	applyTerraformIgnore bool
 }
 
 // NewPacker is a constructor for Packer.
 func NewPacker(options ...PackerOption) (*Packer, error) {
 	p := &Packer{
-		dereference: false,
-		applyIgnore: false,
+		dereference:          false,
+		applyTerraformIgnore: false,
 	}
 
 	for _, opt := range options {
@@ -86,7 +86,7 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 
 		// This defaults to false in NewPacker, but is true here. This matches
 		// the old behavior of Pack, which always used .terraformignore.
-		applyIgnore: true,
+		applyTerraformIgnore: true,
 	}
 	return p.Pack(src, w)
 }
@@ -108,7 +108,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	// Load the ignore rule configuration, which will use
 	// defaults if no .terraformignore is configured
 	var ignoreRules []rule
-	if p.applyIgnore {
+	if p.applyTerraformIgnore {
 		ignoreRules = parseIgnoreFile(src)
 	}
 

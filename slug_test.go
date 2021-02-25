@@ -729,8 +729,8 @@ func TestNewPacker(t *testing.T) {
 		{
 			desc: "defaults",
 			expect: &Packer{
-				dereference: false,
-				applyIgnore: false,
+				dereference:          false,
+				applyTerraformIgnore: false,
 			},
 		},
 		{
@@ -742,17 +742,17 @@ func TestNewPacker(t *testing.T) {
 		},
 		{
 			desc:    "apply .terraformignore",
-			options: []PackerOption{ApplyIgnore()},
+			options: []PackerOption{ApplyTerraformIgnore()},
 			expect: &Packer{
-				applyIgnore: true,
+				applyTerraformIgnore: true,
 			},
 		},
 		{
 			desc:    "multiple options",
-			options: []PackerOption{ApplyIgnore(), DereferenceSymlinks()},
+			options: []PackerOption{ApplyTerraformIgnore(), DereferenceSymlinks()},
 			expect: &Packer{
-				dereference: true,
-				applyIgnore: true,
+				dereference:          true,
+				applyTerraformIgnore: true,
 			},
 		},
 	} {
