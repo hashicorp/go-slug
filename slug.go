@@ -2,12 +2,13 @@ package slug
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	gzip "github.com/klauspost/pgzip"
 )
 
 // Meta provides detailed information about a slug.

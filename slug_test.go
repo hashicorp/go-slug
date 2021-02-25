@@ -3,7 +3,6 @@ package slug
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -12,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	gzip "github.com/klauspost/pgzip"
 )
 
 func TestPack(t *testing.T) {
