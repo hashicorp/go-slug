@@ -34,6 +34,63 @@ func (e *IllegalSlugError) Error() string {
 // chain.
 func (e *IllegalSlugError) Unwrap() error { return e.Err }
 
+// PackerOption is a functional option that can configure non-default Packers.
+type PackerOption func(*Packer) error
+
+// ApplyTerraformIgnore is a PackerOption that will apply the .terraformignore
+// rules and skip packing files it specifies.
+func ApplyTerraformIgnore() PackerOption {
+	return func(p *Packer) error {
+		p.applyTerraformIgnore = true
+		return nil
+	}
+}
+
+// DereferenceSymlinks is a PackerOption that will allow symlinks that
+// reference a target outside of the src directory.
+func DereferenceSymlinks() PackerOption {
+	return func(p *Packer) error {
+		p.dereference = true
+		return nil
+	}
+}
+
+// Packer holds options for the Pack function.
+type Packer struct {
+	dereference          bool
+	applyTerraformIgnore bool
+}
+
+// NewPacker is a constructor for Packer.
+func NewPacker(options ...PackerOption) (*Packer, error) {
+	p := &Packer{
+		dereference:          false,
+		applyTerraformIgnore: false,
+	}
+
+	for _, opt := range options {
+		if err := opt(p); err != nil {
+			return nil, fmt.Errorf("option failed: %w", err)
+		}
+	}
+
+	return p, nil
+}
+
+// Pack at the package level is used to maintain compatibility with existing
+// code that relies on this function signature. New options related to packing
+// slugs should be added to the Packer struct instead.
+func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
+	p := Packer{
+		dereference: dereference,
+
+		// This defaults to false in NewPacker, but is true here. This matches
+		// the old behavior of Pack, which always used .terraformignore.
+		applyTerraformIgnore: true,
+	}
+	return p.Pack(src, w)
+}
+
 // Pack creates a slug from a src directory, and writes the new slug
 // to w. Returns metadata about the slug and any errors.
 //
@@ -41,7 +98,7 @@ func (e *IllegalSlugError) Unwrap() error { return e.Err }
 // the src directory will be dereferenced. When dereference is set to
 // false symlinks with a target outside the src directory are omitted
 // from the slug.
-func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
+func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	// Gzip compress all the output data.
 	gzipW := gzip.NewWriter(w)
 
@@ -50,13 +107,16 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 
 	// Load the ignore rule configuration, which will use
 	// defaults if no .terraformignore is configured
-	ignoreRules := parseIgnoreFile(src)
+	var ignoreRules []rule
+	if p.applyTerraformIgnore {
+		ignoreRules = parseIgnoreFile(src)
+	}
 
 	// Track the metadata details as we go.
 	meta := &Meta{}
 
 	// Walk the tree of files.
-	err := filepath.Walk(src, packWalkFn(src, src, src, tarW, meta, dereference, ignoreRules))
+	err := filepath.Walk(src, packWalkFn(src, src, src, tarW, meta, p.dereference, ignoreRules))
 	if err != nil {
 		return nil, err
 	}
