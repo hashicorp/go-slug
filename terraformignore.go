@@ -74,22 +74,28 @@ func readRules(input io.Reader) []rule {
 	return rules
 }
 
-func matchIgnoreRule(path string, rules []rule) bool {
-	matched := false
+func matchIgnoreRule(path string, rules []rule) (bool, *rule) {
+	var matched *rule = nil
 	path = filepath.FromSlash(path)
-	for _, rule := range rules {
+	for idx := range rules {
+		rule := &rules[idx]
 		match, _ := rule.match(path)
 
 		if match {
-			matched = !rule.excluded
+			if rule.excluded {
+				return false, rule
+			}
+			if rule.val != "**/*" || matched == nil {
+				matched = rule
+			}
 		}
 	}
 
-	if matched {
+	if matched != nil {
 		debug(true, path, "Skipping excluded path:", path)
 	}
 
-	return matched
+	return matched != nil, matched
 }
 
 type rule struct {
@@ -200,8 +206,12 @@ var defaultExclusions = []rule{
 		excluded: false,
 	},
 	{
-		val:      filepath.Join("**", ".terraform", "**"),
+		val:      filepath.Join("**", ".terraform", "?**"),
 		excluded: false,
+	},
+	{
+		val:      filepath.Join("**", ".terraform", "modules"),
+		excluded: true,
 	},
 	{
 		val:      filepath.Join("**", ".terraform", "modules", "**"),

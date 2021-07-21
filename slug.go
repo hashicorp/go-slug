@@ -149,14 +149,21 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			return nil
 		}
 
-		if m := matchIgnoreRule(subpath, ignoreRules); m {
-			return nil
+		if m, r := matchIgnoreRule(subpath, ignoreRules); m && !(r.val == "**/*" && info.IsDir()) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			} else {
+				return nil
+			}
 		}
 
 		// Catch directories so we don't end up with empty directories,
 		// the files are ignored correctly
 		if info.IsDir() {
-			if m := matchIgnoreRule(subpath+string(os.PathSeparator), ignoreRules); m {
+			if m, r := matchIgnoreRule(subpath+string(os.PathSeparator), ignoreRules); m {
+				if r.val != "**/*" { // Represents the `*` rule
+					return filepath.SkipDir
+				}
 				return nil
 			}
 		}
