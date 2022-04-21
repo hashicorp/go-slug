@@ -411,6 +411,89 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	verifyPerms(t, filepath.Join(dst, "a"), 0400)
 }
 
+func TestUnpackPaxHeaders(t *testing.T) {
+	tcases := []struct {
+		desc    string
+		headers []*tar.Header
+	}{
+		{
+			desc: "extended pax header",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "h",
+					Typeflag: tar.TypeXHeader,
+				},
+			},
+		},
+		{
+			desc: "global pax header",
+			headers: []*tar.Header{
+				&tar.Header{
+					Name:     "h",
+					Typeflag: tar.TypeXGlobalHeader,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir, err := ioutil.TempDir("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer os.RemoveAll(dir)
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			for _, hdr := range tc.headers {
+				tarW.WriteHeader(hdr)
+			}
+
+			tarW.Close()
+			gzipW.Close()
+			wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := ioutil.TempDir(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer os.RemoveAll(dst)
+
+			// Now try unpacking it.
+			if err := Unpack(fh, dst); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Verify no file was created.
+			path := filepath.Join(dst, "h")
+			fh, err = os.Open(path)
+			if err == nil {
+				t.Fatalf("expected file not to exist: %q", path)
+			}
+			defer fh.Close()
+		})
+	}
+}
+
 // ensure Unpack returns an error when an unsupported file type is encountered
 // in an archive, rather than silently discarding the data.
 func TestUnpackErrorOnUnhandledType(t *testing.T) {
