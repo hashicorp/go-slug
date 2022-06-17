@@ -29,9 +29,10 @@ func TestPack(t *testing.T) {
 
 	tarR := tar.NewReader(gzipR)
 	var (
-		symFound bool
-		fileList []string
-		slugSize int64
+		symFound         bool
+		danglingSymFound bool
+		fileList         []string
+		slugSize         int64
 	)
 
 	for {
@@ -57,11 +58,24 @@ func TestPack(t *testing.T) {
 			}
 			symFound = true
 		}
+
+		if hdr.Name == "dangling_symlink" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expect symlink for file 'dangling_symlink'")
+			}
+			if hdr.Linkname != "nonexistent" {
+				t.Fatalf("expect target of 'nonexistent', got %q", hdr.Linkname)
+			}
+			danglingSymFound = true
+		}
 	}
 
 	// Make sure we saw and handled a symlink
 	if !symFound {
 		t.Fatal("expected to find symlink")
+	}
+	if !danglingSymFound {
+		t.Fatal("expected to find dangling symlink")
 	}
 
 	// Make sure the .git directory is ignored
@@ -313,6 +327,18 @@ func TestPackWithoutIgnoring(t *testing.T) {
 	}
 }
 
+func TestPack_absoluteSymlink(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+
+	_, err := Pack("testdata/absolute-symlink", slug, true)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "has absolute target") {
+		t.Fatalf("expected absolute target error, got %v", err)
+	}
+}
+
 func TestUnpack(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
@@ -338,6 +364,7 @@ func TestUnpack(t *testing.T) {
 	verifyFile(t, filepath.Join(dst, "bar.txt"), 0, "bar\n")
 	verifyFile(t, filepath.Join(dst, "sub", "bar.txt"), os.ModeSymlink, "../bar.txt")
 	verifyFile(t, filepath.Join(dst, "sub", "zip.txt"), 0, "zip\n")
+	verifyFile(t, filepath.Join(dst, "dangling_symlink"), os.ModeSymlink, "nonexistent")
 
 	// Check that we can set permissions properly
 	verifyPerms(t, filepath.Join(dst, "foo.txt"), 0644)
@@ -853,26 +880,31 @@ func TestNewPacker(t *testing.T) {
 }
 
 func verifyFile(t *testing.T, path string, mode os.FileMode, expect string) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		if mode == os.ModeSymlink {
+			if target, _ := os.Readlink(path); target != expect {
+				t.Fatalf("expect link target %q, got %q", expect, target)
+			}
+			return
+		} else {
+			t.Fatalf("found symlink, expected %v", mode)
+		}
+	}
+
+	if !((mode == 0 && info.Mode().IsRegular()) || info.Mode()&mode == 0) {
+		t.Fatalf("wrong file mode for %q", path)
+	}
+
 	fh, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer fh.Close()
-
-	info, err := fh.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !((mode == 0 && info.Mode().IsRegular()) || info.Mode()&mode == 0) {
-		t.Fatalf("wrong file mode for %q", path)
-	}
-
-	if mode == os.ModeSymlink {
-		if target, _ := os.Readlink(path); target != expect {
-			t.Fatalf("expect link target %q, got %q", expect, target)
-		}
-		return
-	}
 
 	raw := make([]byte, info.Size())
 	if _, err := fh.Read(raw); err != nil {

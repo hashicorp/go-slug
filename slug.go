@@ -193,10 +193,24 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			header.Size = info.Size()
 
 		case fm&os.ModeSymlink != 0:
-			target, err := filepath.EvalSymlinks(path)
+			// First read the symlink file to find the destination.
+			target, err := os.Readlink(path)
 			if err != nil {
 				return fmt.Errorf("failed to get symbolic link destination for %q: %w", path, err)
 			}
+
+			// Disallow creating symlinks with absolute paths.
+			if filepath.IsAbs(target) {
+				return &IllegalSlugError{
+					Err: fmt.Errorf(
+						"invalid symlink (%q -> %q) has absolute target",
+						path, target,
+					),
+				}
+			}
+
+			// Get the path to the target relative to path.
+			target = filepath.Join(filepath.Dir(path), target)
 
 			// If the target is within the current source, we
 			// create the symlink using a relative path.
