@@ -199,14 +199,19 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 				return fmt.Errorf("failed to get symbolic link destination for %q: %w", path, err)
 			}
 
-			// Disallow creating symlinks with absolute paths.
+			// Try to make absolute paths relative.
 			if filepath.IsAbs(target) {
-				return &IllegalSlugError{
-					Err: fmt.Errorf(
-						"invalid symlink (%q -> %q) has absolute target",
-						path, target,
-					),
+				absPath, err := filepath.Abs(path)
+				if err != nil {
+					return fmt.Errorf("failed to get absolute path for %q: %w", path, err)
 				}
+				absDir := filepath.Dir(absPath)
+
+				rel, err := filepath.Rel(absDir, target)
+				if err != nil {
+					return fmt.Errorf("failed to find relative path for %q: %w", target, err)
+				}
+				target = rel
 			}
 
 			// Get the path to the target relative to path.
@@ -229,9 +234,13 @@ func packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, dereference
 			}
 
 			if !dereference {
-				// Return early as the symlink has a target outside of the
-				// src directory and we don't want to dereference symlinks.
-				return nil
+				// Symlinks with targets outside of src are prohibited.
+				return &IllegalSlugError{
+					Err: fmt.Errorf(
+						"invalid symlink (%q -> %q) has target outside of %q",
+						path, target, src,
+					),
+				}
 			}
 
 			// Get the file info for the target.

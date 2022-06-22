@@ -29,10 +29,9 @@ func TestPack(t *testing.T) {
 
 	tarR := tar.NewReader(gzipR)
 	var (
-		symFound         bool
-		danglingSymFound bool
-		fileList         []string
-		slugSize         int64
+		symFound bool
+		fileList []string
+		slugSize int64
 	)
 
 	for {
@@ -58,24 +57,11 @@ func TestPack(t *testing.T) {
 			}
 			symFound = true
 		}
-
-		if hdr.Name == "dangling_symlink" {
-			if hdr.Typeflag != tar.TypeSymlink {
-				t.Fatalf("expect symlink for file 'dangling_symlink'")
-			}
-			if hdr.Linkname != "nonexistent" {
-				t.Fatalf("expect target of 'nonexistent', got %q", hdr.Linkname)
-			}
-			danglingSymFound = true
-		}
 	}
 
 	// Make sure we saw and handled a symlink
 	if !symFound {
 		t.Fatal("expected to find symlink")
-	}
-	if !danglingSymFound {
-		t.Fatal("expected to find dangling symlink")
 	}
 
 	// Make sure the .git directory is ignored
@@ -140,108 +126,6 @@ func TestPack(t *testing.T) {
 	}
 	if bazTxt {
 		t.Fatal("should not include baz.txt")
-	}
-
-	// Check the metadata
-	expect := &Meta{
-		Files: fileList,
-		Size:  slugSize,
-	}
-	if !reflect.DeepEqual(meta, expect) {
-		t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", expect, meta)
-	}
-}
-
-func TestPackWithDereferencing(t *testing.T) {
-	slug := bytes.NewBuffer(nil)
-
-	meta, err := Pack("testdata/archive-dir", slug, true)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	gzipR, err := gzip.NewReader(slug)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	tarR := tar.NewReader(gzipR)
-	var (
-		fileList []string
-		slugSize int64
-	)
-
-	for {
-		hdr, err := tarR.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
-
-		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
-			slugSize += hdr.Size
-		}
-
-		if hdr.Name == "foo.txt" {
-			if hdr.Typeflag != tar.TypeReg {
-				t.Fatalf("expect symlink 'foo.txt' to be dereferenced")
-			}
-		}
-	}
-
-	// Check the metadata
-	expect := &Meta{
-		Files: fileList,
-		Size:  slugSize,
-	}
-	if !reflect.DeepEqual(meta, expect) {
-		t.Fatalf("\nexpect:\n%#v\n\nactual:\n%#v", expect, meta)
-	}
-}
-
-func TestPackWithoutDereferencing(t *testing.T) {
-	slug := bytes.NewBuffer(nil)
-
-	meta, err := Pack("testdata/archive-dir", slug, false)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	gzipR, err := gzip.NewReader(slug)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	tarR := tar.NewReader(gzipR)
-	var (
-		fileList []string
-		slugSize int64
-	)
-
-	for {
-		hdr, err := tarR.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
-
-		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
-			slugSize += hdr.Size
-		}
-	}
-
-	// Make sure the the foo.txt symlink is not dereferenced
-	// but is indeed ignored and not added to the archive.
-	for _, file := range fileList {
-		if file == "foo.txt" {
-			t.Fatalf("unexpected dereferenced symlink: %s", file)
-		}
 	}
 
 	// Check the metadata
@@ -327,15 +211,158 @@ func TestPackWithoutIgnoring(t *testing.T) {
 	}
 }
 
-func TestPack_absoluteSymlink(t *testing.T) {
-	slug := bytes.NewBuffer(nil)
-
-	_, err := Pack("testdata/absolute-symlink", slug, true)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+func TestPack_symlinks(t *testing.T) {
+	tcases := []struct {
+		desc           string
+		externalTarget bool
+		createTarget   bool
+		dereference    bool
+		expectTypeflag byte
+		expectErr      string
+	}{
+		{
+			desc:           "internal target with dereferencing",
+			externalTarget: false,
+			createTarget:   true,
+			dereference:    true,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "internal target without dereferencing",
+			externalTarget: false,
+			createTarget:   true,
+			dereference:    false,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "nonexistent internal target with dereferencing",
+			externalTarget: false,
+			createTarget:   false,
+			dereference:    true,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "nonexistent internal target without dereferencing",
+			externalTarget: false,
+			createTarget:   false,
+			dereference:    false,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "external target with dereferencing",
+			externalTarget: true,
+			createTarget:   true,
+			dereference:    true,
+			expectTypeflag: tar.TypeReg,
+		},
+		{
+			desc:           "external target without dereferencing",
+			externalTarget: true,
+			createTarget:   true,
+			dereference:    false,
+			expectTypeflag: tar.TypeSymlink,
+			expectErr:      "target outside",
+		},
+		{
+			desc:           "nonexistent external target with dereferencing",
+			externalTarget: true,
+			createTarget:   false,
+			dereference:    true,
+			expectErr:      "no such file or directory",
+		},
+		{
+			desc:           "nonexistent external target without dereferencing",
+			externalTarget: true,
+			createTarget:   false,
+			dereference:    false,
+			expectErr:      "target outside",
+		},
 	}
-	if !strings.Contains(err.Error(), "has absolute target") {
-		t.Fatalf("expected absolute target error, got %v", err)
+
+	for _, tc := range tcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			td, err := ioutil.TempDir("", "go-slug")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(td)
+
+			internal := filepath.Join(td, "internal")
+			if err := os.MkdirAll(internal, 0700); err != nil {
+				t.Fatal(err)
+			}
+
+			external := filepath.Join(td, "external")
+			if err := os.MkdirAll(external, 0700); err != nil {
+				t.Fatal(err)
+			}
+
+			// Get an absolute path within the temp dir and an absolute target.
+			absPath := filepath.Join(internal, "sym")
+			var absTarget string
+			if tc.externalTarget {
+				absTarget = filepath.Join(external, "foo")
+			} else {
+				absTarget = filepath.Join(internal, "foo")
+			}
+
+			if tc.createTarget {
+				if err := ioutil.WriteFile(absTarget, []byte("foo"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// Make a symlink with an absolute target.
+			if err := os.Symlink(absTarget, absPath); err != nil {
+				t.Fatal(err)
+			}
+
+			// Pack up the temp dir.
+			slug := bytes.NewBuffer(nil)
+			_, err = Pack(internal, slug, tc.dereference)
+			if tc.expectErr != "" {
+				if err != nil {
+					if strings.Contains(err.Error(), tc.expectErr) {
+						return
+					}
+					t.Fatalf("expected error %q, got %v", tc.expectErr, err)
+				}
+				t.Fatal("expected error, got nil")
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			// Inspect the result.
+			gzipR, err := gzip.NewReader(slug)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			tarR := tar.NewReader(gzipR)
+
+			symFound := false
+			for {
+				hdr, err := tarR.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("err: %v", err)
+				}
+				if hdr.Name == "sym" {
+					symFound = true
+					if hdr.Typeflag != tc.expectTypeflag {
+						t.Fatalf("unexpected file type in slug: %q", hdr.Typeflag)
+					}
+					if tc.expectTypeflag == tar.TypeSymlink && hdr.Linkname != "foo" {
+						t.Fatalf("unexpected link target in slug: %q", hdr.Linkname)
+					}
+				}
+			}
+
+			if !symFound {
+				t.Fatal("did not find symlink in archive")
+			}
+		})
 	}
 }
 
@@ -360,14 +387,11 @@ func TestUnpack(t *testing.T) {
 	}
 
 	// Verify all the files
-	verifyFile(t, filepath.Join(dst, "foo.txt"), 0, "foo\n")
 	verifyFile(t, filepath.Join(dst, "bar.txt"), 0, "bar\n")
 	verifyFile(t, filepath.Join(dst, "sub", "bar.txt"), os.ModeSymlink, "../bar.txt")
 	verifyFile(t, filepath.Join(dst, "sub", "zip.txt"), 0, "zip\n")
-	verifyFile(t, filepath.Join(dst, "dangling_symlink"), os.ModeSymlink, "nonexistent")
 
 	// Check that we can set permissions properly
-	verifyPerms(t, filepath.Join(dst, "foo.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "bar.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "sub", "zip.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "sub", "bar.txt"), 0644)
