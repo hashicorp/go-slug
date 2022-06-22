@@ -214,6 +214,7 @@ func TestPackWithoutIgnoring(t *testing.T) {
 func TestPack_symlinks(t *testing.T) {
 	tcases := []struct {
 		desc           string
+		absoluteTarget bool
 		externalTarget bool
 		createTarget   bool
 		dereference    bool
@@ -221,57 +222,120 @@ func TestPack_symlinks(t *testing.T) {
 		expectErr      string
 	}{
 		{
-			desc:           "internal target with dereferencing",
+			desc:           "absolute internal target with dereferencing",
+			absoluteTarget: true,
 			externalTarget: false,
 			createTarget:   true,
 			dereference:    true,
 			expectTypeflag: tar.TypeSymlink,
 		},
 		{
-			desc:           "internal target without dereferencing",
+			desc:           "relative internal target with dereferencing",
+			absoluteTarget: false,
+			externalTarget: false,
+			createTarget:   true,
+			dereference:    true,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "absolute internal target without dereferencing",
+			absoluteTarget: true,
 			externalTarget: false,
 			createTarget:   true,
 			dereference:    false,
 			expectTypeflag: tar.TypeSymlink,
 		},
 		{
-			desc:           "nonexistent internal target with dereferencing",
+			desc:           "relative internal target without dereferencing",
+			absoluteTarget: false,
+			externalTarget: false,
+			createTarget:   true,
+			dereference:    false,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "absolute nonexistent internal target with dereferencing",
+			absoluteTarget: true,
 			externalTarget: false,
 			createTarget:   false,
 			dereference:    true,
 			expectTypeflag: tar.TypeSymlink,
 		},
 		{
-			desc:           "nonexistent internal target without dereferencing",
+			desc:           "relative nonexistent internal target with dereferencing",
+			absoluteTarget: false,
+			externalTarget: false,
+			createTarget:   false,
+			dereference:    true,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "absolute nonexistent internal target without dereferencing",
+			absoluteTarget: true,
 			externalTarget: false,
 			createTarget:   false,
 			dereference:    false,
 			expectTypeflag: tar.TypeSymlink,
 		},
 		{
-			desc:           "external target with dereferencing",
+			desc:           "relative nonexistent internal target without dereferencing",
+			absoluteTarget: false,
+			externalTarget: false,
+			createTarget:   false,
+			dereference:    false,
+			expectTypeflag: tar.TypeSymlink,
+		},
+		{
+			desc:           "relative external target with dereferencing",
+			absoluteTarget: false,
 			externalTarget: true,
 			createTarget:   true,
 			dereference:    true,
 			expectTypeflag: tar.TypeReg,
 		},
 		{
-			desc:           "external target without dereferencing",
+			desc:           "absolute external target without dereferencing",
+			absoluteTarget: true,
 			externalTarget: true,
 			createTarget:   true,
 			dereference:    false,
-			expectTypeflag: tar.TypeSymlink,
 			expectErr:      "target outside",
 		},
 		{
-			desc:           "nonexistent external target with dereferencing",
+			desc:           "relative external target without dereferencing",
+			absoluteTarget: false,
+			externalTarget: true,
+			createTarget:   true,
+			dereference:    false,
+			expectErr:      "target outside",
+		},
+		{
+			desc:           "absolute nonexistent external target with dereferencing",
+			absoluteTarget: true,
 			externalTarget: true,
 			createTarget:   false,
 			dereference:    true,
 			expectErr:      "no such file or directory",
 		},
 		{
-			desc:           "nonexistent external target without dereferencing",
+			desc:           "relative nonexistent external target with dereferencing",
+			absoluteTarget: true,
+			externalTarget: true,
+			createTarget:   false,
+			dereference:    true,
+			expectErr:      "no such file or directory",
+		},
+		{
+			desc:           "absolute nonexistent external target without dereferencing",
+			absoluteTarget: true,
+			externalTarget: true,
+			createTarget:   false,
+			dereference:    false,
+			expectErr:      "target outside",
+		},
+		{
+			desc:           "relative nonexistent external target without dereferencing",
+			absoluteTarget: true,
 			externalTarget: true,
 			createTarget:   false,
 			dereference:    false,
@@ -297,23 +361,42 @@ func TestPack_symlinks(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// Make the symlink in a subdirectory. This will help ensure that
+			// a proper relative link gets created, even when the relative
+			// path requires upward directory traversal.
+			symPath := filepath.Join(internal, "sub", "sym")
+			if err := os.MkdirAll(filepath.Join(internal, "sub"), 0700); err != nil {
+				t.Fatal(err)
+			}
+
 			// Get an absolute path within the temp dir and an absolute target.
-			absPath := filepath.Join(internal, "sym")
-			var absTarget string
+			// We place the target into a subdir to ensure the link is created
+			// properly within a nested structure.
+			var targetPath string
 			if tc.externalTarget {
-				absTarget = filepath.Join(external, "foo")
+				targetPath = filepath.Join(external, "foo", "bar")
 			} else {
-				absTarget = filepath.Join(internal, "foo")
+				targetPath = filepath.Join(internal, "foo", "bar")
 			}
 
 			if tc.createTarget {
-				if err := ioutil.WriteFile(absTarget, []byte("foo"), 0644); err != nil {
+				if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := ioutil.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
 
-			// Make a symlink with an absolute target.
-			if err := os.Symlink(absTarget, absPath); err != nil {
+			if !tc.absoluteTarget {
+				targetPath, err = filepath.Rel(filepath.Dir(symPath), targetPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// Make the symlink.
+			if err := os.Symlink(targetPath, symPath); err != nil {
 				t.Fatal(err)
 			}
 
@@ -348,12 +431,12 @@ func TestPack_symlinks(t *testing.T) {
 				if err != nil {
 					t.Fatalf("err: %v", err)
 				}
-				if hdr.Name == "sym" {
+				if hdr.Name == "sub/sym" {
 					symFound = true
 					if hdr.Typeflag != tc.expectTypeflag {
 						t.Fatalf("unexpected file type in slug: %q", hdr.Typeflag)
 					}
-					if tc.expectTypeflag == tar.TypeSymlink && hdr.Linkname != "foo" {
+					if tc.expectTypeflag == tar.TypeSymlink && hdr.Linkname != "../foo/bar" {
 						t.Fatalf("unexpected link target in slug: %q", hdr.Linkname)
 					}
 				}
