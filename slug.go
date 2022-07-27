@@ -62,7 +62,7 @@ func DereferenceSymlinks() PackerOption {
 // source/destination directories for pack/unpack operations respectively, may
 // be expressly permitted, whereas they are forbidden by default. Exercise
 // caution when using this option. A symlink matches path if its target
-// resolves to path exactly, or if the target is prefixed by path.
+// resolves to path exactly, or if path is a parent directory of target.
 func AllowSymlinkTarget(path string) PackerOption {
 	return func(p *Packer) error {
 		p.allowSymlinkTargets = append(p.allowSymlinkTargets, path)
@@ -468,7 +468,15 @@ func (p *Packer) checkSymlink(root, path, target string) error {
 			prefix = filepath.Join(absRoot, prefix)
 		}
 
-		// Target falls within prefix.
+		// Exact match is allowed.
+		if absTarget == prefix {
+			return nil
+		}
+
+		// Prefix match of a directory is allowed.
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
 		if strings.HasPrefix(absTarget, prefix) {
 			return nil
 		}

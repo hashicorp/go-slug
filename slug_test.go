@@ -428,6 +428,12 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			target: "foo/bar/../../../lol",
 			err:    "has external target",
 		},
+		{
+			desc:   "similar file path, non-match",
+			allow:  "/foo",
+			target: "/foobar",
+			err:    "has external target",
+		},
 	}
 
 	for _, tc := range tcases {
