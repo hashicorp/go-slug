@@ -299,7 +299,7 @@ func TestPack_symlinks(t *testing.T) {
 
 			var expectErr string
 			if tc.external && !tc.dereference {
-				expectErr = "target outside"
+				expectErr = "has external target"
 			}
 			if tc.external && tc.dereference && !tc.targetExists {
 				expectErr = "no such file or directory"
@@ -348,7 +348,7 @@ func TestPack_symlinks(t *testing.T) {
 					if hdr.Typeflag != expectTypeflag {
 						t.Fatalf("unexpected file type in slug: %q", hdr.Typeflag)
 					}
-					if expectTypeflag == tar.TypeSymlink && hdr.Linkname != "../foo/bar" {
+					if expectTypeflag == tar.TypeSymlink && hdr.Linkname != targetPath {
 						t.Fatalf("unexpected link target in slug: %q", hdr.Linkname)
 					}
 				}
@@ -356,6 +356,209 @@ func TestPack_symlinks(t *testing.T) {
 
 			if !symFound {
 				t.Fatal("did not find symlink in archive")
+			}
+		})
+	}
+}
+
+func TestAllowSymlinkTarget(t *testing.T) {
+	tcases := []struct {
+		desc   string
+		allow  string
+		target string
+		err    string
+	}{
+		{
+			desc:   "absolute symlink, exact match",
+			allow:  "/foo/bar/baz",
+			target: "/foo/bar/baz",
+		},
+		{
+			desc:   "relative symlink, exact match",
+			allow:  "../foo/bar",
+			target: "../foo/bar",
+		},
+		{
+			desc:   "absolute symlink, prefix match",
+			allow:  "/foo/",
+			target: "/foo/bar/baz",
+		},
+		{
+			desc:   "relative symlink, prefix match",
+			allow:  "../foo/",
+			target: "../foo/bar/baz",
+		},
+		{
+			desc:   "absolute symlink, non-match",
+			allow:  "/zip",
+			target: "/foo/bar/baz",
+			err:    "has external target",
+		},
+		{
+			desc:   "relative symlink, non-match",
+			allow:  "../zip/",
+			target: "../foo/bar/baz",
+			err:    "has external target",
+		},
+		{
+			desc:   "absolute symlink, embedded traversal, non-match",
+			allow:  "/foo/",
+			target: "/foo/../../zip",
+			err:    "has external target",
+		},
+		{
+			desc:   "relative symlink, embedded traversal, non-match",
+			allow:  "../foo/",
+			target: "../foo/../../zip",
+			err:    "has external target",
+		},
+		{
+			desc:   "absolute symlink, embedded traversal, match",
+			allow:  "/foo/",
+			target: "/foo/bar/../baz",
+		},
+		{
+			desc:   "relative symlink, embedded traversal, match",
+			allow:  "../foo/",
+			target: "../foo/bar/../baz",
+		},
+		{
+			desc:   "external target with embedded upward path traversal",
+			allow:  "foo/bar/",
+			target: "foo/bar/../../../lol",
+			err:    "has external target",
+		},
+		{
+			desc:   "similar file path, non-match",
+			allow:  "/foo",
+			target: "/foobar",
+			err:    "has external target",
+		},
+	}
+
+	for _, tc := range tcases {
+		t.Run("Pack: "+tc.desc, func(t *testing.T) {
+			td, err := ioutil.TempDir("", "go-slug")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(td)
+
+			// Make the symlink.
+			if err := os.Symlink(tc.target, filepath.Join(td, "sym")); err != nil {
+				t.Fatal(err)
+			}
+
+			// Pack up the temp dir.
+			slug := bytes.NewBuffer(nil)
+			p, err := NewPacker(AllowSymlinkTarget(tc.allow))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = p.Pack(td, slug)
+			if tc.err != "" {
+				if err != nil {
+					if strings.Contains(err.Error(), tc.err) {
+						return
+					}
+					t.Fatalf("expected error %q, got %v", tc.err, err)
+				}
+				t.Fatal("expected error, got nil")
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			// Inspect the result.
+			gzipR, err := gzip.NewReader(slug)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			tarR := tar.NewReader(gzipR)
+
+			symFound := false
+			for {
+				hdr, err := tarR.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("err: %v", err)
+				}
+				if hdr.Name == "sym" {
+					symFound = true
+					if hdr.Typeflag != tar.TypeSymlink {
+						t.Fatalf("unexpected file type in slug: %q", hdr.Typeflag)
+					}
+					if hdr.Linkname != tc.target {
+						t.Fatalf("unexpected link target in slug: %q", hdr.Linkname)
+					}
+				}
+			}
+
+			if !symFound {
+				t.Fatal("did not find symlink in archive")
+			}
+		})
+
+		t.Run("Unpack: "+tc.desc, func(t *testing.T) {
+			dir, err := ioutil.TempDir("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer os.RemoveAll(dir)
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			// Write the header.
+			tarW.WriteHeader(&tar.Header{
+				Name:     "l",
+				Linkname: tc.target,
+				Typeflag: tar.TypeSymlink,
+			})
+
+			tarW.Close()
+			gzipW.Close()
+			wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := ioutil.TempDir(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer os.RemoveAll(dst)
+
+			// Unpack.
+			p, err := NewPacker(AllowSymlinkTarget(tc.allow))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := p.Unpack(fh, dst); err != nil {
+				if tc.err != "" {
+					if !strings.Contains(err.Error(), tc.err) {
+						t.Fatalf("expected error %q, got %v", tc.err, err)
+					}
+				} else {
+					t.Fatal(err)
+				}
+			} else if tc.err != "" {
+				t.Fatalf("expected error %q, got nil", tc.err)
 			}
 		})
 	}
@@ -608,7 +811,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 					Typeflag: tar.TypeSymlink,
 				},
 			},
-			err: "has absolute target",
+			err: "has external target",
 		},
 		{
 			desc: "symlink with external target",
