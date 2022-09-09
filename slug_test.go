@@ -139,6 +139,39 @@ func TestPack(t *testing.T) {
 	}
 }
 
+func TestPackWithLevel(t *testing.T) {
+	uncompressedSlug := bytes.NewBuffer(nil)
+	compressedSlug := bytes.NewBuffer(nil)
+
+	// Valid compression level
+	p, err := NewPacker(CompressionLevel(gzip.NoCompression))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	_, err = p.Pack("testdata/archive-dir", uncompressedSlug)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Default compression
+	_, err = Pack("testdata/archive-dir", compressedSlug, false)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if compressedSlug.Len() >= uncompressedSlug.Len() {
+		t.Fatalf("setting the compression level didn't seem to work. compressed size (default) was %d and uncompressed size was %d", compressedSlug.Len(), uncompressedSlug.Len())
+	}
+
+	// Invalid compression level
+	p, _ = NewPacker(CompressionLevel(9000))
+	_, err = p.Pack("testdata/archive-dir", compressedSlug)
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
+}
+
 func TestPackWithoutIgnoring(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
@@ -1063,13 +1096,15 @@ func TestNewPacker(t *testing.T) {
 			expect: &Packer{
 				dereference:          false,
 				applyTerraformIgnore: false,
+				compressionLevel:     gzip.DefaultCompression,
 			},
 		},
 		{
 			desc:    "enable dereferencing",
 			options: []PackerOption{DereferenceSymlinks()},
 			expect: &Packer{
-				dereference: true,
+				dereference:      true,
+				compressionLevel: gzip.DefaultCompression,
 			},
 		},
 		{
@@ -1077,14 +1112,23 @@ func TestNewPacker(t *testing.T) {
 			options: []PackerOption{ApplyTerraformIgnore()},
 			expect: &Packer{
 				applyTerraformIgnore: true,
+				compressionLevel:     gzip.DefaultCompression,
+			},
+		},
+		{
+			desc:    "compression level",
+			options: []PackerOption{CompressionLevel(gzip.BestSpeed)},
+			expect: &Packer{
+				compressionLevel: gzip.BestSpeed,
 			},
 		},
 		{
 			desc:    "multiple options",
-			options: []PackerOption{ApplyTerraformIgnore(), DereferenceSymlinks()},
+			options: []PackerOption{ApplyTerraformIgnore(), DereferenceSymlinks(), CompressionLevel(gzip.BestCompression)},
 			expect: &Packer{
 				dereference:          true,
 				applyTerraformIgnore: true,
+				compressionLevel:     gzip.BestCompression,
 			},
 		},
 	} {

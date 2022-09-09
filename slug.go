@@ -70,11 +70,23 @@ func AllowSymlinkTarget(path string) PackerOption {
 	}
 }
 
+// CompressionLevel allows callers to set the gzip compression level to use
+// when packing the source directory. The default compression level (6, or
+// gzip.DefaultCompression) is used if this option is not set. All available
+// compression constants are defined in the gzip and flate packages.
+func CompressionLevel(level int) PackerOption {
+	return func(p *Packer) error {
+		p.compressionLevel = level
+		return nil
+	}
+}
+
 // Packer holds options for the Pack function.
 type Packer struct {
 	dereference          bool
 	applyTerraformIgnore bool
 	allowSymlinkTargets  []string
+	compressionLevel     int
 }
 
 // NewPacker is a constructor for Packer.
@@ -82,6 +94,7 @@ func NewPacker(options ...PackerOption) (*Packer, error) {
 	p := &Packer{
 		dereference:          false,
 		applyTerraformIgnore: false,
+		compressionLevel:     gzip.DefaultCompression,
 	}
 
 	for _, opt := range options {
@@ -103,6 +116,7 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 		// This defaults to false in NewPacker, but is true here. This matches
 		// the old behavior of Pack, which always used .terraformignore.
 		applyTerraformIgnore: true,
+		compressionLevel:     gzip.DefaultCompression,
 	}
 	return p.Pack(src, w)
 }
@@ -116,7 +130,11 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 // from the slug.
 func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	// Gzip compress all the output data.
-	gzipW := gzip.NewWriter(w)
+	gzipW, err := gzip.NewWriterLevel(w, p.compressionLevel)
+	if err != nil {
+		// An invalid compression level was used
+		return nil, fmt.Errorf("failed to initialize compressed stream: %w", err)
+	}
 
 	// Tar the file contents.
 	tarW := tar.NewWriter(gzipW)
@@ -132,7 +150,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	meta := &Meta{}
 
 	// Walk the tree of files.
-	err := filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
+	err = filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
 	if err != nil {
 		return nil, err
 	}
