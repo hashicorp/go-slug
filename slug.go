@@ -26,6 +26,11 @@ type IllegalSlugError struct {
 	Err error
 }
 
+// PredicateFunc defines the callback used by InclusionPredicate. Callers
+// should return false if a file at the specified relative path should
+// be omitted from the slug.
+type PredicateFunc func(relpath string, info os.FileInfo) bool
+
 func (e *IllegalSlugError) Error() string {
 	return fmt.Sprintf("illegal slug error: %v", e.Err)
 }
@@ -42,6 +47,16 @@ type PackerOption func(*Packer) error
 func ApplyTerraformIgnore() PackerOption {
 	return func(p *Packer) error {
 		p.applyTerraformIgnore = true
+		return nil
+	}
+}
+
+// InclusionPredicate is a PackerOption that performs a callback function for
+// each file that is to be packed, allowing the caller to skip certain files
+// based on any rules.
+func InclusionPredicate(f PredicateFunc) PackerOption {
+	return func(p *Packer) error {
+		p.predicateFunc = f
 		return nil
 	}
 }
@@ -75,6 +90,7 @@ type Packer struct {
 	dereference          bool
 	applyTerraformIgnore bool
 	allowSymlinkTargets  []string
+	predicateFunc        PredicateFunc
 }
 
 // NewPacker is a constructor for Packer.
@@ -173,6 +189,12 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 		// the files are ignored correctly
 		if info.IsDir() {
 			if m := matchIgnoreRule(subpath+string(os.PathSeparator), ignoreRules); m {
+				return nil
+			}
+		}
+
+		if p.predicateFunc != nil {
+			if !p.predicateFunc(subpath, info) {
 				return nil
 			}
 		}
