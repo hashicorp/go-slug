@@ -5,11 +5,11 @@ workflows:
   build:
     jobs:
       - test
-      
+
 jobs:
   test:
     docker:
-      - image: docker.mirror.hashicorp.services/cimg/go:1.15
+      - image: docker.mirror.hashicorp.services/cimg/go:1.18
 
     steps:
       - checkout

@@ -1,3 +1,3 @@
 module github.com/hashicorp/go-slug
 
-go 1.15
+go 1.18
