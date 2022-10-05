@@ -8,11 +8,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Go
+      - name: setup go
         uses: actions/setup-go@v3
         with:
           go-version-file: go.mod
-          cache: true
 
-      - name: Test
+      - name: test
         run: go test -race ./...
