@@ -116,7 +116,12 @@ func Pack(src string, w io.Writer, dereference bool) (*Meta, error) {
 // from the slug.
 func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	// Gzip compress all the output data.
-	gzipW := gzip.NewWriter(w)
+	gzipW, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	if err != nil {
+		// This error is only raised when an incorrect gzip level is
+		// specified.
+		return nil, err
+	}
 
 	// Tar the file contents.
 	tarW := tar.NewWriter(gzipW)
@@ -132,7 +137,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	meta := &Meta{}
 
 	// Walk the tree of files.
-	err := filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
+	err = filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
 	if err != nil {
 		return nil, err
 	}
