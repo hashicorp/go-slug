@@ -46,6 +46,13 @@ func ApplyTerraformIgnore() PackerOption {
 	}
 }
 
+// resolvedSymlink is a simple abstraction for a resolved symlink
+type resolvedSymlink struct {
+	absTarget string
+	target    string
+	info      os.FileInfo
+}
+
 // DereferenceSymlinks is a PackerOption that will allow symlinks that
 // reference a target outside of the source directory by copying the link
 // target, turning it into a normal file within the archive.
@@ -214,52 +221,27 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 			header.Size = info.Size()
 
 		case fm&os.ModeSymlink != 0:
-			// First read the symlink file to find the destination.
-			target, err := os.Readlink(path)
+			resolved, err := p.resolveLink(root, path, header)
 			if err != nil {
-				return fmt.Errorf("failed to read symlink %q: %w", path, err)
+				return err
 			}
 
-			// Ensure the target is acceptable per the Packer's configuration.
-			if err := p.checkSymlink(root, path, target); err != nil {
-				// Check if dereferencing is enabled. If so, we're going to
-				// try copying the symlink's data. If not, this is an error.
-				if !p.dereference {
-					return err
-				}
-			} else {
-				header.Typeflag = tar.TypeSymlink
-				header.Linkname = filepath.ToSlash(target)
+			if resolved == nil {
 				break
-			}
-
-			// Get the absolute path of the symlink target.
-			absTarget := target
-			if !filepath.IsAbs(absTarget) {
-				absTarget = filepath.Join(filepath.Dir(path), target)
-			}
-			if !filepath.IsAbs(absTarget) {
-				absTarget = filepath.Join(root, absTarget)
-			}
-
-			// Get the file info for the target.
-			info, err = os.Lstat(absTarget)
-			if err != nil {
-				return fmt.Errorf("failed to get file info from file %q: %w", target, err)
 			}
 
 			// If the target is a directory we can recurse into the target
 			// directory by calling the packWalkFn with updated arguments.
-			if info.IsDir() {
-				return filepath.Walk(absTarget, p.packWalkFn(root, target, path, tarW, meta, ignoreRules))
+			if resolved.info.IsDir() {
+				return filepath.Walk(resolved.absTarget, p.packWalkFn(root, resolved.target, path, tarW, meta, ignoreRules))
 			}
 
 			// Dereference this symlink by updating the header with the target file
 			// details and set writeBody to true so the body will be written.
 			header.Typeflag = tar.TypeReg
-			header.ModTime = info.ModTime()
-			header.Mode = int64(info.Mode().Perm())
-			header.Size = info.Size()
+			header.ModTime = resolved.info.ModTime()
+			header.Mode = int64(resolved.info.Mode().Perm())
+			header.Size = resolved.info.Size()
 			writeBody = true
 
 		default:
@@ -295,6 +277,58 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 
 		return nil
 	}
+}
+
+func (p *Packer) resolveLink(root string, path string, header *tar.Header) (*resolvedSymlink, error) {
+	// Read the symlink file to find the destination.
+	target, err := os.Readlink(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read symlink %q: %w", path, err)
+	}
+
+	// Ensure the target is acceptable per the Packer's configuration.
+	if err := p.checkSymlink(root, path, target); err != nil {
+		// Check if dereferencing is enabled. If so, we're going to
+		// try copying the symlink's data. If not, this is an error.
+		if !p.dereference {
+			return nil, err
+		}
+	} else {
+		if header != nil {
+			header.Typeflag = tar.TypeSymlink
+			header.Linkname = filepath.ToSlash(target)
+		}
+		// This is ugly, but we have to short-circuit here
+		return nil, nil
+	}
+
+	// Get the absolute path of the symlink target.
+	absTarget := target
+	if !filepath.IsAbs(absTarget) {
+		absTarget = filepath.Join(filepath.Dir(path), target)
+	}
+	if !filepath.IsAbs(absTarget) {
+		absTarget = filepath.Join(root, absTarget)
+	}
+
+	// Get the file info for the target.
+	info, err := os.Lstat(absTarget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info from file %q: %w", target, err)
+	}
+
+	// Recurse if the symlink resolves to another symlink
+	if info.Mode()&os.ModeSymlink != 0 {
+		return p.resolveLink(root, absTarget, header)
+	}
+
+	resolved := &resolvedSymlink{
+		absTarget: absTarget,
+		target:    target,
+		info:      info,
+	}
+
+	return resolved, err
 }
 
 // Unpack is used to read and extract the contents of a slug to the dst

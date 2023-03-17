@@ -30,9 +30,10 @@ func TestPack(t *testing.T) {
 
 	tarR := tar.NewReader(gzipR)
 	var (
-		symFound bool
-		fileList []string
-		slugSize int64
+		symFound       bool
+		nestedSymFound bool
+		fileList       []string
+		slugSize       int64
 	)
 
 	for {
@@ -58,11 +59,26 @@ func TestPack(t *testing.T) {
 			}
 			symFound = true
 		}
+
+		if hdr.Name == "sub2/bar.txt" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expect symlink for file 'sub2/bar.txt'")
+			}
+			if hdr.Linkname != "../sub/bar.txt" {
+				t.Fatalf("expect target of '../sub/bar.txt', got %q", hdr.Linkname)
+			}
+			nestedSymFound = true
+		}
 	}
 
 	// Make sure we saw and handled a symlink
 	if !symFound {
 		t.Fatal("expected to find symlink")
+	}
+
+	// Make sure we saw and handled a nested symlink
+	if !nestedSymFound {
+		t.Fatal("expected to find nested symlink")
 	}
 
 	// Make sure the .git directory is ignored
