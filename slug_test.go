@@ -56,7 +56,7 @@ func TestPackWithoutIgnoring(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	meta, err := p.Pack("testdata/archive-dir", slug)
+	meta, err := p.Pack("testdata/archive-dir-no-external", slug)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -475,7 +475,7 @@ func TestUnpack(t *testing.T) {
 	// First create the slug file so we can try to unpack it.
 	slug := bytes.NewBuffer(nil)
 
-	if _, err := Pack("testdata/archive-dir", slug, true); err != nil {
+	if _, err := Pack("testdata/archive-dir-no-external", slug, true); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -1017,9 +1017,10 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 
 	tarR := tar.NewReader(gzipR)
 	var (
-		symFound bool
-		fileList []string
-		slugSize int64
+		symFound            bool
+		externalTargetFound bool
+		fileList            []string
+		slugSize            int64
 	)
 
 	for {
@@ -1045,11 +1046,23 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 			}
 			symFound = true
 		}
+
+		if hdr.Name == "example.tf" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expected symlink file 'example.tf'")
+			}
+			externalTargetFound = true
+		}
 	}
 
 	// Make sure we saw and handled a symlink
 	if !symFound {
 		t.Fatal("expected to find symlink")
+	}
+
+	// Make sure we saw and handled a nested symlink
+	if !externalTargetFound {
+		t.Fatal("expected to find nested symlink")
 	}
 
 	// Make sure the .git directory is ignored
@@ -1169,6 +1182,6 @@ func verifyPerms(t *testing.T, path string, expect os.FileMode) {
 		t.Fatal(err)
 	}
 	if perm := fi.Mode().Perm(); perm != expect {
-		t.Fatalf("expect perms %o, got %o", expect, perm)
+		t.Fatalf("expect perms %o for path %s, got %o", expect, path, perm)
 	}
 }

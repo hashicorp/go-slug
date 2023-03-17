@@ -34,6 +34,13 @@ func (e *IllegalSlugError) Error() string {
 // chain.
 func (e *IllegalSlugError) Unwrap() error { return e.Err }
 
+// externalSymlink is a simple abstraction for a information about a symlink target
+type externalSymlink struct {
+	absTarget string
+	target    string
+	info      os.FileInfo
+}
+
 // PackerOption is a functional option that can configure non-default Packers.
 type PackerOption func(*Packer) error
 
@@ -227,52 +234,43 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 			header.Size = info.Size()
 
 		case fm&os.ModeSymlink != 0:
-			// First read the symlink file to find the destination.
+			// Read the symlink file to find the destination.
 			target, err := os.Readlink(path)
 			if err != nil {
 				return fmt.Errorf("failed to read symlink %q: %w", path, err)
 			}
 
-			// Ensure the target is acceptable per the Packer's configuration.
-			if err := p.checkSymlink(root, path, target); err != nil {
-				// Check if dereferencing is enabled. If so, we're going to
-				// try copying the symlink's data. If not, this is an error.
-				if !p.dereference {
-					return err
-				}
-			} else {
+			// Check if the symlink's target falls within the root.
+			if ok, err := p.validSymlink(root, path, target); ok {
+				// We can simply copy the link.
 				header.Typeflag = tar.TypeSymlink
 				header.Linkname = filepath.ToSlash(target)
 				break
+			} else if !p.dereference {
+				// If the target does not fall within the root and dereference
+				// is set to false, we can't resolve the target and copy its
+				// contents.
+				return err
 			}
 
-			// Get the absolute path of the symlink target.
-			absTarget := target
-			if !filepath.IsAbs(absTarget) {
-				absTarget = filepath.Join(filepath.Dir(path), target)
-			}
-			if !filepath.IsAbs(absTarget) {
-				absTarget = filepath.Join(root, absTarget)
-			}
-
-			// Get the file info for the target.
-			info, err = os.Lstat(absTarget)
+			// Attempt to follow the external target so we can copy its contents
+			resolved, err := p.resolveExternalLink(root, path)
 			if err != nil {
-				return fmt.Errorf("failed to get file info from file %q: %w", target, err)
+				return err
 			}
 
 			// If the target is a directory we can recurse into the target
 			// directory by calling the packWalkFn with updated arguments.
-			if info.IsDir() {
-				return filepath.Walk(absTarget, p.packWalkFn(root, target, path, tarW, meta, ignoreRules))
+			if resolved.info.IsDir() {
+				return filepath.Walk(resolved.absTarget, p.packWalkFn(root, resolved.target, path, tarW, meta, ignoreRules))
 			}
 
 			// Dereference this symlink by updating the header with the target file
 			// details and set writeBody to true so the body will be written.
 			header.Typeflag = tar.TypeReg
-			header.ModTime = info.ModTime()
-			header.Mode = int64(info.Mode().Perm())
-			header.Size = info.Size()
+			header.ModTime = resolved.info.ModTime()
+			header.Mode = int64(resolved.info.Mode().Perm())
+			header.Size = resolved.info.Size()
 			writeBody = true
 
 		default:
@@ -308,6 +306,43 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 
 		return nil
 	}
+}
+
+// resolveExternalSymlink attempts to recursively follow target paths if we
+// encounter a symbolic link chain. It returns path information about the final
+// target pointing to a regular file or directory.
+func (p *Packer) resolveExternalLink(root string, path string) (*externalSymlink, error) {
+	// Read the symlink file to find the destination.
+	target, err := os.Readlink(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read symlink %q: %w", path, err)
+	}
+
+	// Get the absolute path of the symlink target.
+	absTarget := target
+	if !filepath.IsAbs(absTarget) {
+		absTarget = filepath.Join(filepath.Dir(path), target)
+	}
+	if !filepath.IsAbs(absTarget) {
+		absTarget = filepath.Join(root, absTarget)
+	}
+
+	// Get the file info for the target.
+	info, err := os.Lstat(absTarget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info from file %q: %w", target, err)
+	}
+
+	// Recurse if the symlink resolves to another symlink
+	if info.Mode()&os.ModeSymlink != 0 {
+		return p.resolveExternalLink(root, absTarget)
+	}
+
+	return &externalSymlink{
+		absTarget: absTarget,
+		target:    target,
+		info:      info,
+	}, err
 }
 
 // Unpack is used to read and extract the contents of a slug to the dst
@@ -395,15 +430,14 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Handle symlinks.
 		if header.Typeflag == tar.TypeSymlink {
-			err := p.checkSymlink(dst, header.Name, header.Linkname)
-			if err != nil {
+			if ok, err := p.validSymlink(dst, header.Name, header.Linkname); ok {
+				// Create the symlink.
+				if err = os.Symlink(header.Linkname, path); err != nil {
+					return fmt.Errorf("failed creating symlink (%q -> %q): %w",
+						header.Name, header.Linkname, err)
+				}
+			} else {
 				return err
-			}
-
-			// Create the symlink.
-			if err := os.Symlink(header.Linkname, path); err != nil {
-				return fmt.Errorf("failed creating symlink (%q -> %q): %w",
-					header.Name, header.Linkname, err)
 			}
 
 			continue
@@ -451,13 +485,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 }
 
 // Given a "root" directory, the path to a symlink within said root, and the
-// target of said symlink, checkSymlink checks that the target either falls
+// target of said symlink, validSymlink checks that the target either falls
 // into root somewhere, or is explicitly allowed per the Packer's config.
-func (p *Packer) checkSymlink(root, path, target string) error {
+func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 	// Get the absolute path to root.
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
-		return fmt.Errorf("failed making path %q absolute: %w", root, err)
+		return false, fmt.Errorf("failed making path %q absolute: %w", root, err)
 	}
 
 	// Get the absolute path to the file path.
@@ -476,7 +510,7 @@ func (p *Packer) checkSymlink(root, path, target string) error {
 
 	// Target falls within root.
 	if strings.HasPrefix(absTarget, absRoot) {
-		return nil
+		return true, nil
 	}
 
 	// The link target is outside of root. Check if it is allowed.
@@ -488,7 +522,7 @@ func (p *Packer) checkSymlink(root, path, target string) error {
 
 		// Exact match is allowed.
 		if absTarget == prefix {
-			return nil
+			return true, nil
 		}
 
 		// Prefix match of a directory is allowed.
@@ -496,11 +530,11 @@ func (p *Packer) checkSymlink(root, path, target string) error {
 			prefix += "/"
 		}
 		if strings.HasPrefix(absTarget, prefix) {
-			return nil
+			return true, nil
 		}
 	}
 
-	return &IllegalSlugError{
+	return false, &IllegalSlugError{
 		Err: fmt.Errorf(
 			"invalid symlink (%q -> %q) has external target",
 			path, target,
