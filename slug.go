@@ -3,6 +3,7 @@ package slug
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -226,7 +227,16 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 				return err
 			}
 
-			if resolved == nil {
+			// Ensure the target is acceptable per the Packer's configuration.
+			if err := p.checkSymlink(root, path, resolved.target); err != nil {
+				// Check if dereferencing is enabled. If so, we're going to
+				// try copying the symlink's data. If not, this is an error.
+				if !p.dereference {
+					return err
+				}
+			} else {
+				header.Typeflag = tar.TypeSymlink
+				header.Linkname = filepath.ToSlash(resolved.absTarget)
 				break
 			}
 
@@ -280,26 +290,14 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 }
 
 func (p *Packer) resolveLink(root string, path string, header *tar.Header) (*resolvedSymlink, error) {
+	if header == nil {
+		return nil, errors.New("no tar header was specified for this link")
+	}
+
 	// Read the symlink file to find the destination.
 	target, err := os.Readlink(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read symlink %q: %w", path, err)
-	}
-
-	// Ensure the target is acceptable per the Packer's configuration.
-	if err := p.checkSymlink(root, path, target); err != nil {
-		// Check if dereferencing is enabled. If so, we're going to
-		// try copying the symlink's data. If not, this is an error.
-		if !p.dereference {
-			return nil, err
-		}
-	} else {
-		if header != nil {
-			header.Typeflag = tar.TypeSymlink
-			header.Linkname = filepath.ToSlash(target)
-		}
-		// This is ugly, but we have to short-circuit here
-		return nil, nil
 	}
 
 	// Get the absolute path of the symlink target.
