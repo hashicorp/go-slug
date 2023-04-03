@@ -126,15 +126,28 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	// Tar the file contents.
 	tarW := tar.NewWriter(gzipW)
 
+	// Track the metadata details as we go.
+	meta := &Meta{}
+
+	info, err := os.Lstat(src)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the root (src) is a symlink
+	if info.Mode()&os.ModeSymlink != 0 {
+		src, err = os.Readlink(src)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Load the ignore rule configuration, which will use
 	// defaults if no .terraformignore is configured
 	var ignoreRules []rule
 	if p.applyTerraformIgnore {
 		ignoreRules = parseIgnoreFile(src)
 	}
-
-	// Track the metadata details as we go.
-	meta := &Meta{}
 
 	// Walk the tree of files.
 	err = filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
