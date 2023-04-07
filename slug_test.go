@@ -26,24 +26,33 @@ func TestPack(t *testing.T) {
 }
 
 func TestPack_rootIsSymlink(t *testing.T) {
-	err := os.Symlink("testdata/archive-dir", "testdata/archive-dir-symlink")
-	if err != nil {
-		t.Fatalf("Failed creating dir symlink: %v", err)
-	}
-	t.Cleanup(func() {
-		err := os.Remove("testdata/archive-dir-symlink")
-		if err != nil {
-			t.Fatalf("failed removing testdata/archive-dir-symlink: %v", err)
-		}
-	})
+	for _, path := range []string{
+		"testdata/archive-dir",
+		"./testdata/archive-dir",
+	} {
+		t.Run(fmt.Sprintf("target is path: %s", path), func(t *testing.T) {
+			symlinkPath := path + "-symlink"
+			err := os.Symlink(path, symlinkPath)
+			if err != nil {
+				t.Fatalf("Failed creating dir %s symlink: %v", path, err)
 
-	slug := bytes.NewBuffer(nil)
-	meta, err := Pack("testdata/archive-dir-symlink", slug, true)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
+			}
+			t.Cleanup(func() {
+				err = os.Remove(symlinkPath)
+				if err != nil {
+					t.Fatalf("failed removing %s: %v", symlinkPath, err)
+				}
+			})
 
-	assertArchiveFixture(t, slug, meta)
+			slug := bytes.NewBuffer(nil)
+			meta, err := Pack(symlinkPath, slug, true)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			assertArchiveFixture(t, slug, meta)
+		})
+	}
 }
 
 func TestPackWithoutIgnoring(t *testing.T) {
