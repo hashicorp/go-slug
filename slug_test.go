@@ -1017,6 +1017,34 @@ func TestNewPacker(t *testing.T) {
 	}
 }
 
+func TestUnpackEmptyName(t *testing.T) {
+	var buf bytes.Buffer
+
+	gw := gzip.NewWriter(&buf)
+
+	tw := tar.NewWriter(gw)
+
+	tw.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeDir,
+	})
+
+	tw.Close()
+	gw.Close()
+
+	if buf.Len() == 0 {
+		t.Fatal("unable to create tar properly")
+	}
+
+	dir, err := ioutil.TempDir("", "slug")
+	if err != nil {
+		t.Fatalf("err:%v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// This crashes unless the bug is fixed
+	Unpack(&buf, dir)
+}
+
 // This is a reusable assertion for when packing testdata/archive-dir
 func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 	gzipR, err := gzip.NewReader(slug)

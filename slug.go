@@ -376,6 +376,12 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Get rid of absolute paths.
 		path := header.Name
+
+		// If the entry has no name, ignore it.
+		if path == "" {
+			continue
+		}
+
 		if path[0] == '/' {
 			path = path[1:]
 		}
