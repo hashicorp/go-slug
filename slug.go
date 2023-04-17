@@ -374,7 +374,6 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			return fmt.Errorf("failed to untar slug: %w", err)
 		}
 
-		// Get rid of absolute paths.
 		path := header.Name
 
 		// If the entry has no name, ignore it.
@@ -382,6 +381,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			continue
 		}
 
+		// Get rid of absolute paths.
 		if path[0] == '/' {
 			path = path[1:]
 		}
