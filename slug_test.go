@@ -1042,7 +1042,10 @@ func TestUnpackEmptyName(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// This crashes unless the bug is fixed
-	Unpack(&buf, dir)
+	err = Unpack(&buf, dir)
+	if err != nil {
+		t.Fatalf("err:%v", err)
+	}
 }
 
 // This is a reusable assertion for when packing testdata/archive-dir
