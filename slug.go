@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hashicorp/go-slug/internal/ignorefiles"
 )
 
 // Meta provides detailed information about a slug.
@@ -151,7 +153,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 
 	// Load the ignore rule configuration, which will use
 	// defaults if no .terraformignore is configured
-	var ignoreRules []rule
+	var ignoreRules *ignorefiles.Ruleset
 	if p.applyTerraformIgnore {
 		ignoreRules = parseIgnoreFile(src)
 	}
@@ -175,7 +177,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	return meta, nil
 }
 
-func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, ignoreRules []rule) filepath.WalkFunc {
+func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta, ignoreRules *ignorefiles.Ruleset) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -190,14 +192,14 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 			return nil
 		}
 
-		if m := matchIgnoreRule(subpath, ignoreRules); m {
+		if m := matchIgnoreRules(subpath, ignoreRules); m {
 			return nil
 		}
 
 		// Catch directories so we don't end up with empty directories,
 		// the files are ignored correctly
 		if info.IsDir() {
-			if m := matchIgnoreRule(subpath+string(os.PathSeparator), ignoreRules); m {
+			if m := matchIgnoreRules(subpath+string(os.PathSeparator), ignoreRules); m {
 				return nil
 			}
 		}

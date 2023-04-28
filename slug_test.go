@@ -1217,6 +1217,7 @@ func verifyFile(t *testing.T, path string, mode os.FileMode, expect string) {
 }
 
 func verifyPerms(t *testing.T, path string, expect os.FileMode) {
+	t.Helper()
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
