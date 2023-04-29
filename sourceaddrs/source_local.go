@@ -47,11 +47,21 @@ func ParseLocalSource(given string) (LocalSource, error) {
 
 	clean := path.Clean(given)
 
-	// We use the "path" package's definition of "clean" aside from one
-	// exception: we need to retain the leading "./", if it was originally
-	// present, to disambiguate from module registry addresses.
+	// We use the "path" package's definition of "clean" aside from two
+	// exceptions:
+	// - we need to retain the leading "./", if it was originally present, to
+	//   disambiguate from module registry addresses.
+	// - If the cleaned path is just ".." then we need a slash on the end
+	//   because that's part of how we recognize an address as a relative path.
+	if clean == ".." {
+		clean = "../"
+	}
 	if !looksLikeLocalSource(clean) {
 		clean = "./" + clean
+	}
+
+	if clean != given {
+		return LocalSource{}, fmt.Errorf("relative path must be written in canonical form %q", clean)
 	}
 
 	return LocalSource{relPath: clean}, nil
@@ -65,4 +75,10 @@ func (s LocalSource) String() string {
 // SupportsVersionConstraints implements Source
 func (s LocalSource) SupportsVersionConstraints() bool {
 	return false
+}
+
+// RelativePath returns the effective relative path for this source address,
+// in our platform-agnostic slash-separated canonical syntax.
+func (s LocalSource) RelativePath() string {
+	return s.relPath
 }

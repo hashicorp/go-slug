@@ -86,11 +86,15 @@ func (httpSourceType) PrepareURL(u *url.URL) error {
 		if vs[0] != "tar.gz" && vs[0] != "tgz" {
 			return fmt.Errorf("the special 'archive' query string argument must be set to 'tgz' if present")
 		}
-		// We need to remove the special "archive" argument now so that we
-		// won't confuse the remote server with it. We preserve all of the
-		// other arguments because they might actually be intended for the
-		// server.
-		qs.Del("archive")
+		if vs[0] == "tar.gz" {
+			qs.Set("archive", "tgz") // normalize on the shorter form
+		}
+		// NOTE: We don't remove the "archive" argument here because the code
+		// which eventually fetches this will need it to understand what kind
+		// of archive it's supposed to be fetching, but that final client ought
+		// to remove this argument itself to avoid potentially confusing the
+		// remote server, since this is an argument reserved for go-getter and
+		// for the subset of go-getter's syntax we're implementing here.
 		u.RawQuery = qs.Encode()
 	} else {
 		p := u.EscapedPath()

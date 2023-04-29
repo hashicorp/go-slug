@@ -8,9 +8,8 @@ import (
 )
 
 type RemoteSource struct {
-	sourceType string
-	url        *url.URL
-	subPath    string
+	pkg     RemotePackage
+	subPath string
 }
 
 // sourceSigil implements Source
@@ -22,20 +21,21 @@ var _ Source = RemoteSource{}
 // or returns an error if it does not use the correct syntax for interpretation
 // as a remote source address.
 func ParseRemoteSource(given string) (RemoteSource, error) {
-	pkgRaw, subPathRaw := splitSubPath(given)
-	subPath, err := normalizeSubpath(subPathRaw)
-	if err != nil {
-		return RemoteSource{}, fmt.Errorf("invalid sub-path: %w", err)
-	}
-
+	expandedGiven := given
 	for _, shorthand := range remoteSourceShorthands {
-		replacement, ok, err := shorthand(pkgRaw)
+		replacement, ok, err := shorthand(given)
 		if err != nil {
 			return RemoteSource{}, err
 		}
 		if ok {
-			pkgRaw = replacement
+			expandedGiven = replacement
 		}
+	}
+
+	pkgRaw, subPathRaw := splitSubPath(expandedGiven)
+	subPath, err := normalizeSubpath(subPathRaw)
+	if err != nil {
+		return RemoteSource{}, fmt.Errorf("invalid sub-path: %w", err)
 	}
 
 	// Once we've dealt with all the "shorthand" business, our address
@@ -43,8 +43,8 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 	// optional and defaults to matching the URL scheme if not present.
 	var sourceType string
 	if matches := remoteSourceTypePattern.FindStringSubmatch(pkgRaw); len(matches) != 0 {
-		sourceType = matches[0]
-		pkgRaw = matches[1]
+		sourceType = matches[1]
+		pkgRaw = matches[2]
 	}
 
 	u, err := url.Parse(pkgRaw)
@@ -74,6 +74,27 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 		return RemoteSource{}, fmt.Errorf("invalid URL query string syntax in %q: %w", pkgRaw, err)
 	}
 
+	return makeRemoteSource(sourceType, u, subPath)
+}
+
+// MakeRemoteSource constructs a [RemoteSource] from its component parts.
+//
+// This is useful for deriving one remote source from another, by disassembling
+// the original address into its component parts, modifying those parts, and
+// then combining the modified parts back together with this function.
+func MakeRemoteSource(sourceType string, u *url.URL, subPath string) (RemoteSource, error) {
+	var err error
+	subPath, err = normalizeSubpath(subPath)
+	if err != nil {
+		return RemoteSource{}, fmt.Errorf("invalid sub-path: %w", err)
+	}
+
+	copyU := *u // shallow copy so we can safely modify
+
+	return makeRemoteSource(sourceType, &copyU, subPath)
+}
+
+func makeRemoteSource(sourceType string, u *url.URL, subPath string) (RemoteSource, error) {
 	typeImpl, ok := remoteSourceTypes[sourceType]
 	if !ok {
 		if sourceType == u.Scheme {
@@ -85,39 +106,35 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 		}
 	}
 
-	err = typeImpl.PrepareURL(u)
+	err := typeImpl.PrepareURL(u)
 	if err != nil {
 		return RemoteSource{}, err
 	}
 
 	return RemoteSource{
-		sourceType: sourceType,
-		url:        u,
-		subPath:    subPath,
+		pkg: RemotePackage{
+			sourceType: sourceType,
+			url:        *u,
+		},
+		subPath: subPath,
 	}, nil
 }
 
 // String implements Source
 func (s RemoteSource) String() string {
-	// Our address normalization rules are a bit odd since we inherited the
-	// fundamentals of this addressing scheme from go-getter.
-	if s.url.Scheme == s.sourceType {
-		// When scheme and source type match we don't actually mention the
-		// source type in the stringification, because it looks redundant
-		// and confusing.
-		if s.subPath != "" {
-			return s.url.String() + "//" + s.subPath
-		}
-		return s.url.String()
-	}
-	if s.subPath != "" {
-		return s.sourceType + "::" + s.url.String() + "//" + s.subPath
-	}
-	return s.sourceType + "::" + s.url.String()
+	return s.pkg.subPathString(s.subPath)
 }
 
 func (s RemoteSource) SupportsVersionConstraints() bool {
 	return false
+}
+
+func (s RemoteSource) Package() RemotePackage {
+	return s.pkg
+}
+
+func (s RemoteSource) SubPath() string {
+	return s.subPath
 }
 
 type remoteSourceShorthand func(given string) (normed string, ok bool, err error)
@@ -185,6 +202,12 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
 			urlStr += "//" + strings.Join(parts[3:], "/")
+			// NOTE: We can't actually get here if there are exactly four
+			// parts, because gitlab.com is also a Terraform module registry
+			// and so gitlab.com/a/b/c must be interpreted as a registry
+			// module address instead of a GitLab repository address. Users
+			// must write an explicit git source address if they intend to
+			// refer to a Git repository.
 		}
 
 		return "git::" + urlStr, true, nil

@@ -2,6 +2,7 @@ package sourceaddrs
 
 import (
 	"fmt"
+	"path"
 
 	regaddr "github.com/hashicorp/terraform-registry-address"
 )
@@ -38,26 +39,44 @@ func looksLikeRegistrySource(given string) bool {
 // or returns an error if it does not use the correct syntax for interpretation
 // as a registry source address.
 func ParseRegistrySource(given string) (RegistrySource, error) {
-	// We delegate the first level of parsing to the shared library
-	// terraform-registry-address, but then we'll impose some additional
-	// validation and normalization over that since we're intentionally
-	// being a little stricter than Terraform has historically been,
-	// prioritizing "one obvious way to do it" over many esoteric variations.
-
-	startingAddr, err := regaddr.ParseModuleSource(given)
-	if err != nil {
-		return RegistrySource{}, err
-	}
-
-	subPath, err := normalizeSubpath(startingAddr.Subdir)
+	pkgRaw, subPathRaw := splitSubPath(given)
+	subPath, err := normalizeSubpath(subPathRaw)
 	if err != nil {
 		return RegistrySource{}, fmt.Errorf("invalid sub-path: %w", err)
 	}
 
+	// We delegate the package address parsing to the shared library
+	// terraform-registry-address, but then we'll impose some additional
+	// validation and normalization over that since we're intentionally
+	// being a little stricter than Terraform has historically been,
+	// prioritizing "one obvious way to do it" over many esoteric variations.
+	pkgOnlyAddr, err := regaddr.ParseModuleSource(pkgRaw)
+	if err != nil {
+		return RegistrySource{}, err
+	}
+	if pkgOnlyAddr.Subdir != "" {
+		// Should never happen, because we split the subpath off above.
+		panic("post-split registry address still has subdir")
+	}
+
 	return RegistrySource{
-		pkg:     startingAddr.Package,
+		pkg:     pkgOnlyAddr.Package,
 		subPath: subPath,
 	}, nil
+}
+
+// ParseRegistryPackage parses the given string as a registry package address,
+// which is the same syntax as a registry source address with no sub-path
+// portion.
+func ParseRegistryPackage(given string) (regaddr.ModulePackage, error) {
+	srcAddr, err := ParseRegistrySource(given)
+	if err != nil {
+		return regaddr.ModulePackage{}, err
+	}
+	if srcAddr.subPath != "" {
+		return regaddr.ModulePackage{}, fmt.Errorf("remote package address may not have a sub-path")
+	}
+	return srcAddr.pkg, nil
 }
 
 func (s RegistrySource) String() string {
@@ -69,4 +88,31 @@ func (s RegistrySource) String() string {
 
 func (s RegistrySource) SupportsVersionConstraints() bool {
 	return true
+}
+
+func (s RegistrySource) Package() regaddr.ModulePackage {
+	return s.pkg
+}
+
+// FinalSourceAddr takes the result of looking up the package portion of the
+// receiver in a module registry and appends the reciever's sub-path to the
+// returned sub-path to produce the final fully-qualified remote source address.
+func (s RegistrySource) FinalSourceAddr(realSource RemoteSource) RemoteSource {
+	if s.subPath == "" {
+		return realSource // Easy case
+	}
+	if realSource.subPath == "" {
+		return RemoteSource{
+			pkg:     realSource.pkg,
+			subPath: s.subPath,
+		}
+	}
+	// If we get here then both addresses have a sub-path, so we need to
+	// combine them together. This assumes that the "real source" from the
+	// module registry will always refer to a directory, which is a fundamental
+	// assumption of the module registry protocol.
+	return RemoteSource{
+		pkg:     realSource.pkg,
+		subPath: path.Join(realSource.subPath, s.subPath),
+	}
 }

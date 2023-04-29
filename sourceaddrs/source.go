@@ -2,6 +2,8 @@ package sourceaddrs
 
 import (
 	"fmt"
+	"path"
+	"strings"
 )
 
 // Source acts as a tagged union over the three possible source address types,
@@ -15,10 +17,16 @@ type Source interface {
 	SupportsVersionConstraints() bool
 }
 
-// Source attempts to parse the given string as any one of the three supported
-// source address types, recognizing which type it belongs to based on the
-// syntax differences between the address forms.
+// ParseSource attempts to parse the given string as any one of the three
+// supported source address types, recognizing which type it belongs to based
+// on the syntax differences between the address forms.
 func ParseSource(given string) (Source, error) {
+	if strings.TrimSpace(given) != given {
+		return nil, fmt.Errorf("source address must not have leading or trailing spaces")
+	}
+	if len(given) == 0 {
+		return nil, fmt.Errorf("a valid source address is required")
+	}
 	switch {
 	case looksLikeLocalSource(given):
 		ret, err := ParseLocalSource(given)
@@ -45,6 +53,16 @@ func ParseSource(given string) (Source, error) {
 	}
 }
 
+// MustParseSource is a thin wrapper around [ParseSource] that panics if it
+// returns an error, or returns its result if not.
+func MustParseSource(given string) Source {
+	ret, err := ParseSource(given)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
 // ResolveRelativeSource calculates a new source address from the combination
 // of two other source addresses.
 //
@@ -57,6 +75,49 @@ func ParseSource(given string) (Source, error) {
 // Returns an error if "b" is a relative path that attempts to traverse out
 // of the package of an absolute address given in "a".
 func ResolveRelativeSource(a, b Source) (Source, error) {
-	// TODO: implement
-	panic("unimplemented")
+	if sourceIsAbs(b) {
+		return b, nil
+	}
+	// If we get here then b is definitely a local source, because
+	// otherwise it would have been absolute.
+	bRaw := b.(LocalSource).relPath
+
+	switch a := a.(type) {
+	case LocalSource:
+		aRaw := a.relPath
+		new := path.Join(aRaw, bRaw)
+		if !looksLikeLocalSource(new) {
+			new = "./" + new // preserve LocalSource's prefix invariant
+		}
+		return LocalSource{relPath: new}, nil
+	case RegistrySource:
+		aSub := a.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return RegistrySource{
+			pkg:     a.pkg,
+			subPath: newSub,
+		}, nil
+	case RemoteSource:
+		aSub := a.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return RemoteSource{
+			pkg:     a.pkg,
+			subPath: newSub,
+		}, nil
+	default:
+		// Should not get here, because the cases above are exhaustive for
+		// all of our defined Source implementations.
+		panic(fmt.Sprintf("unsupported Source implementation %T", a))
+	}
+}
+
+func sourceIsAbs(source Source) bool {
+	_, isLocal := source.(LocalSource)
+	return !isLocal
 }
