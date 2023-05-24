@@ -94,6 +94,10 @@ func (s RegistrySource) Package() regaddr.ModulePackage {
 	return s.pkg
 }
 
+func (s RegistrySource) SubPath() string {
+	return s.subPath
+}
+
 // FinalSourceAddr takes the result of looking up the package portion of the
 // receiver in a module registry and appends the reciever's sub-path to the
 // returned sub-path to produce the final fully-qualified remote source address.

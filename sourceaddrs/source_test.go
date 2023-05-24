@@ -497,6 +497,54 @@ func TestResolveRelativeSource(t *testing.T) {
 	}
 }
 
+func TestSourceFilename(t *testing.T) {
+	tests := []struct {
+		Addr Source
+		Want string
+	}{
+		{
+			MustParseSource("./foo.tf"),
+			"foo.tf",
+		},
+		{
+			MustParseSource("./boop/foo.tf"),
+			"foo.tf",
+		},
+		{
+			MustParseSource("git::https://example.com/foo.git//foo.tf"),
+			"foo.tf",
+		},
+		{
+			MustParseSource("git::https://example.com/foo.git//boop/foo.tf"),
+			"foo.tf",
+		},
+		{
+			MustParseSource("git::https://example.com/foo.git//boop/foo.tf?ref=main"),
+			"foo.tf",
+		},
+		{
+			MustParseSource("hashicorp/subnets/cidr//main.tf"),
+			"main.tf",
+		},
+		{
+			MustParseSource("hashicorp/subnets/cidr//test/simple.tf"),
+			"simple.tf",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Addr.String(), func(t *testing.T) {
+			got := SourceFilename(test.Addr)
+			if got != test.Want {
+				t.Errorf(
+					"wrong result\naddr: %s\ngot:  %s\nwant: %s",
+					test.Addr, got, test.Want,
+				)
+			}
+		})
+	}
+}
+
 func mustParseURL(s string) *url.URL {
 	ret, err := url.Parse(s)
 	if err != nil {

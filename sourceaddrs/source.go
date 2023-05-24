@@ -117,6 +117,28 @@ func ResolveRelativeSource(a, b Source) (Source, error) {
 	}
 }
 
+// SourceFilename returns the base name (in the same sense as [path.Base])
+// of the sub-path or local path portion of the given source address.
+//
+// This only really makes sense for a source address that refers to an
+// individual file, and is intended for needs such as using the suffix of
+// the filename to decide how to parse a particular file. Passing a source
+// address that refers to a directory will not fail but its result is
+// unlikely to be useful.
+func SourceFilename(addr Source) string {
+	switch addr := addr.(type) {
+	case LocalSource:
+		return path.Base(addr.RelativePath())
+	case RemoteSource:
+		return path.Base(addr.SubPath())
+	case RegistrySource:
+		return path.Base(addr.SubPath())
+	default:
+		// above should be exhaustive for all source types
+		panic(fmt.Sprintf("cannot SourceFilename for %T", addr))
+	}
+}
+
 func sourceIsAbs(source Source) bool {
 	_, isLocal := source.(LocalSource)
 	return !isLocal
