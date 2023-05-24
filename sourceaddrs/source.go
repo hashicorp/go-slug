@@ -9,6 +9,11 @@ import (
 // Source acts as a tagged union over the three possible source address types,
 // for situations where all three are acceptable.
 //
+// Source is used to specify source addresses for installation. Once packages
+// have been resolved and installed we use [SourceFinal] instead to represent
+// those finalized selections, which allows capturing the selected version
+// number for a module registry source address.
+//
 // Only address types within this package can implement Source.
 type Source interface {
 	sourceSigil()

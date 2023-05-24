@@ -118,6 +118,31 @@ func OpenDir(baseDir string) (*Bundle, error) {
 	return ret, nil
 }
 
+// LocalPathForSource takes either a remote or registry final source address
+// and returns the local path within the bundle that corresponds with it.
+//
+// It doesn't make sense to pass a [sourceaddrs.LocalSource] to this function
+// because a source bundle cannot contain anything other than remote packages,
+// but as a concession to convenience this function will return a
+// filepath-shaped relative path in that case, assuming that the source was
+// intended to be a local filesystem path relative to the current working
+// directory. The result will therefore not necessarily be a subdirectory of
+// the recieving bundle in that case.
+func (b *Bundle) LocalPathForSource(addr sourceaddrs.FinalSource) (string, error) {
+	switch addr := addr.(type) {
+	case sourceaddrs.RemoteSource:
+		return b.LocalPathForRemoteSource(addr)
+	case sourceaddrs.RegistrySourceFinal:
+		return b.LocalPathForRegistrySource(addr.Unversioned(), addr.SelectedVersion())
+	case sourceaddrs.LocalSource:
+		return filepath.FromSlash(addr.RelativePath()), nil
+	default:
+		// If we get here then it's probably a bug: the above cases should be
+		// exhaustive for all sourceaddrs.FinalSource implementations.
+		return "", fmt.Errorf("cannot produce local path for source address of type %T", addr)
+	}
+}
+
 // LocalPathForRemoteSource returns the local path within the bundle that
 // corresponds with the given source address, or an error if the source address
 // is within a source package not included in the bundle.
@@ -134,11 +159,6 @@ func (b *Bundle) LocalPathForRemoteSource(addr sourceaddrs.RemoteSource) (string
 // LocalPathForRegistrySource returns the local path within the bundle that
 // corresponds with the given registry address and version, or an error if the
 // source address is within a source package not included in the bundle.
-//
-// A source bundle does not have any direct representation of local source
-// addresses -- they are always relative to a location in a remote source
-// package -- so this function will always fail when given a local source
-// address.
 func (b *Bundle) LocalPathForRegistrySource(addr sourceaddrs.RegistrySource, version versions.Version) (string, error) {
 	pkgAddr := addr.Package()
 	vs, ok := b.registryPackageSources[pkgAddr]
@@ -154,6 +174,13 @@ func (b *Bundle) LocalPathForRegistrySource(addr sourceaddrs.RegistrySource, ver
 	// to incorporate that into our result.
 	finalSourceAddr := addr.FinalSourceAddr(baseSourceAddr)
 	return b.LocalPathForRemoteSource(finalSourceAddr)
+}
+
+// LocalPathForFinalRegistrySource is a variant of
+// [Bundle.LocalPathForRegistrySource] which passes the source address and
+// selected version together as a single address value.
+func (b *Bundle) LocalPathForFinalRegistrySource(addr sourceaddrs.RegistrySourceFinal) (string, error) {
+	return b.LocalPathForRegistrySource(addr.Unversioned(), addr.SelectedVersion())
 }
 
 // SourceForLocalPath is the inverse of [Bundle.LocalPathForSource],

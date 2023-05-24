@@ -12,10 +12,14 @@ type RemoteSource struct {
 	subPath string
 }
 
+var _ Source = RemoteSource{}
+var _ FinalSource = RemoteSource{}
+
 // sourceSigil implements Source
 func (RemoteSource) sourceSigil() {}
 
-var _ Source = RemoteSource{}
+// finalSourceSigil implements FinalSource
+func (RemoteSource) finalSourceSigil() {}
 
 // ParseRemoteSource parses the given string as a remote source address,
 // or returns an error if it does not use the correct syntax for interpretation

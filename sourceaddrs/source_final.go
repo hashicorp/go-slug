@@ -1,0 +1,94 @@
+package sourceaddrs
+
+import (
+	"fmt"
+	"path"
+)
+
+// FinalSource is a variant of [Source] that always refers to a single
+// specific package.
+//
+// Specifically this models the annoying oddity that while [LocalSource] and
+// [RemoteSource] fully specify what they refer to, [RegistrySource] only
+// gives partial information and must be qualified with a selected version
+// number to determine exactly what it refers to.
+type FinalSource interface {
+	finalSourceSigil()
+
+	String() string
+}
+
+// FinalSourceFilename returns the base name (in the same sense as [path.Base])
+// of the sub-path or local path portion of the given final source address.
+//
+// This only really makes sense for a source address that refers to an
+// individual file, and is intended for needs such as using the suffix of
+// the filename to decide how to parse a particular file. Passing a source
+// address that refers to a directory will not fail but its result is
+// unlikely to be useful.
+func FinalSourceFilename(addr FinalSource) string {
+	switch addr := addr.(type) {
+	case LocalSource:
+		return path.Base(addr.RelativePath())
+	case RemoteSource:
+		return path.Base(addr.SubPath())
+	case RegistrySourceFinal:
+		return path.Base(addr.SubPath())
+	default:
+		// above should be exhaustive for all final source types
+		panic(fmt.Sprintf("cannot FinalSourceFilename for %T", addr))
+	}
+}
+
+// ResolveRelativeFinalSource is like [ResolveRelativeSource] but for
+// [FinalSource] addresses instead of [Source] addresses.
+//
+// Aside from the address type difference its meaning and behavior rules
+// are the same.
+func ResolveRelativeFinalSource(a, b FinalSource) (FinalSource, error) {
+	if finalSourceIsAbs(b) {
+		return b, nil
+	}
+	// If we get here then b is definitely a local source, because
+	// otherwise it would have been absolute.
+	bRaw := b.(LocalSource).relPath
+
+	switch a := a.(type) {
+	case LocalSource:
+		aRaw := a.relPath
+		new := path.Join(aRaw, bRaw)
+		if !looksLikeLocalSource(new) {
+			new = "./" + new // preserve LocalSource's prefix invariant
+		}
+		return LocalSource{relPath: new}, nil
+	case RegistrySourceFinal:
+		aSub := a.src.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return RegistrySource{
+			pkg:     a.Package(),
+			subPath: newSub,
+		}.Versioned(a.version), nil
+	case RemoteSource:
+		aSub := a.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return RemoteSource{
+			pkg:     a.pkg,
+			subPath: newSub,
+		}, nil
+	default:
+		// Should not get here, because the cases above are exhaustive for
+		// all of our defined Source implementations.
+		panic(fmt.Sprintf("unsupported Source implementation %T", a))
+	}
+}
+
+func finalSourceIsAbs(source FinalSource) bool {
+	_, isLocal := source.(LocalSource)
+	return !isLocal
+}

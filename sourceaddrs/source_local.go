@@ -21,9 +21,13 @@ type LocalSource struct {
 }
 
 var _ Source = LocalSource{}
+var _ FinalSource = LocalSource{}
 
 // sourceSigil implements Source
 func (s LocalSource) sourceSigil() {}
+
+// finalSourceSigil implements FinalSource
+func (s LocalSource) finalSourceSigil() {}
 
 func looksLikeLocalSource(given string) bool {
 	return strings.HasPrefix(given, "./") || strings.HasPrefix(given, "../")

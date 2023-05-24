@@ -144,6 +144,9 @@ func (b *Builder) AddRemoteSource(ctx context.Context, addr sourceaddrs.RemoteSo
 // into the bundle, and then analyzes the new artifact for dependencies
 // using the given dependency finder.
 //
+// If you have already selected a specific version to install, consider using
+// [Builder.AddFinalRegistrySource] instead.
+//
 // If the returned diagnostics contains errors then the bundle is left in an
 // inconsistent state and must not be used for any other calls.
 func (b *Builder) AddRegistrySource(ctx context.Context, addr sourceaddrs.RegistrySource, allowedVersions versions.Set, depFinder DependencyFinder) Diagnostics {
@@ -159,6 +162,22 @@ func (b *Builder) AddRegistrySource(ctx context.Context, addr sourceaddrs.Regist
 	b.mu.Unlock()
 
 	return b.resolvePending(ctx)
+}
+
+// AddFinalRegistrySource is a variant of [Builder.AddRegistrySource] which
+// takes an already-selected version of a registry source, instead of taking
+// a version constraint and then selecting the latest available version
+// matching that constraint.
+//
+// This function still asks the registry for its set of available versions for
+// the unversioned package first, to ensure that the results from installing
+// from a final source will always be consistent with those from installing
+// from a not-yet-resolved registry source.
+func (b *Builder) AddFinalRegistrySource(ctx context.Context, addr sourceaddrs.RegistrySourceFinal, depFinder DependencyFinder) Diagnostics {
+	// We handle this just by turning the version selection into an exact
+	// version set and then installing from that as normal.
+	allowedVersions := versions.Only(addr.SelectedVersion())
+	return b.AddRegistrySource(ctx, addr.Unversioned(), allowedVersions, depFinder)
 }
 
 // Close ensures that the target directory is in a valid and consistent state

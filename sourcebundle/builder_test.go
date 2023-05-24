@@ -494,7 +494,7 @@ func TestBuilderCoalescePackages(t *testing.T) {
 		}
 	})
 	t.Run("dependency 1", func(t *testing.T) {
-		localPkgDir, err := bundle.LocalPathForRemoteSource(dep1Source)
+		localPkgDir, err := bundle.LocalPathForSource(dep1Source)
 		if err != nil {
 			for pkgAddr, localDir := range builder.remotePackageDirs {
 				t.Logf("contents of %s are in %s", pkgAddr, localDir)

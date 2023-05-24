@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/apparentlymart/go-versions/versions"
 	regaddr "github.com/hashicorp/terraform-registry-address"
 )
 
@@ -96,6 +97,16 @@ func (s RegistrySource) Package() regaddr.ModulePackage {
 
 func (s RegistrySource) SubPath() string {
 	return s.subPath
+}
+
+// Versioned combines the receiver with a specific selected version number to
+// produce a final source address that can be used to resolve to a single
+// source package.
+func (s RegistrySource) Versioned(selectedVersion versions.Version) RegistrySourceFinal {
+	return RegistrySourceFinal{
+		src:     s,
+		version: selectedVersion,
+	}
 }
 
 // FinalSourceAddr takes the result of looking up the package portion of the

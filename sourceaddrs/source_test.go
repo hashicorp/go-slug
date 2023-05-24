@@ -462,6 +462,11 @@ func TestResolveRelativeSource(t *testing.T) {
 			Rel:  MustParseSource("./boop"),
 			Want: MustParseSource("git::https://github.com/hashicorp/go-slug.git//boop"),
 		},
+		{
+			Base: MustParseSource("example.com/foo/bar/baz//beep/boop"),
+			Rel:  MustParseSource("../"),
+			Want: MustParseSource("example.com/foo/bar/baz//beep"),
+		},
 	}
 
 	for _, test := range tests {
