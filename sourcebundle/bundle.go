@@ -201,7 +201,7 @@ func (b *Bundle) LocalPathForFinalRegistrySource(addr sourceaddrs.RegistrySource
 // instead of exposing the opaque internal directory names from the source
 // bundle. This function should not typically be used in performance-sensitive
 // portions of the happy path.
-func (b *Bundle) SourceForLocalPath(p string) (sourceaddrs.Source, error) {
+func (b *Bundle) SourceForLocalPath(p string) (sourceaddrs.FinalSource, error) {
 	// This implementation is a best effort sort of thing, and might not
 	// always succeed in awkward cases.
 
