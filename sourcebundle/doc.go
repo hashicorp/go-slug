@@ -9,4 +9,9 @@
 // source bundles have a more prescriptive structure that allows callers to
 // use a source bundle as a direct substitute for fetching the individual
 // source packages it was built from.
+//
+// NOTE WELL: Everything in this package is currently experimental and subject
+// to breaking changes even in patch releases. We will make stronger commitments
+// to backward-compatibility once we have more experience using this
+// functionality in real contexts.
 package sourcebundle
