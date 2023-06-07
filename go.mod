@@ -12,6 +12,6 @@ require (
 
 require (
 	github.com/go-test/deep v1.0.3 // indirect
-	golang.org/x/net v0.5.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 )
