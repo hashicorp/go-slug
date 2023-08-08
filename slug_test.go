@@ -55,6 +55,37 @@ func TestPack_rootIsSymlink(t *testing.T) {
 	}
 }
 
+func TestPack_absoluteSrcRelativeSymlinks(t *testing.T) {
+	var path string
+	var err error
+
+	// In instances we run within CI, we want to fetch
+	// the absolute path where our test is located
+	if workDir, ok := os.LookupEnv("GITHUB_WORKSPACE"); ok {
+		path = workDir
+	} else {
+		path, err = os.Getwd()
+		if err != nil {
+			t.Fatalf("could not determine the working dir: %v", err)
+		}
+	}
+
+	// One last check, if this variable is empty we'll error
+	// since we need the absolute path for the source
+	if path == "" {
+		t.Fatal("Home directory could not be determined")
+	}
+
+	path = filepath.Join(path, "testdata/archive-dir-absolute/dev")
+	slug := bytes.NewBuffer(nil)
+	_, err = Pack(path, slug, true)
+	if err != nil {
+		// We simply want to ensure paths can be resolved while
+		// traversing the source directory
+		t.Fatalf("err: %v", err)
+	}
+}
+
 func TestPackWithoutIgnoring(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
@@ -1088,8 +1119,8 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 		}
 
 		if hdr.Name == "example.tf" {
-			if hdr.Typeflag != tar.TypeSymlink {
-				t.Fatalf("expected symlink file 'example.tf'")
+			if hdr.Typeflag != tar.TypeReg {
+				t.Fatalf("expected symlink to be dereferenced 'example.tf'")
 			}
 			externalTargetFound = true
 		}
@@ -1100,9 +1131,9 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 		t.Fatal("expected to find symlink")
 	}
 
-	// Make sure we saw and handled a nested symlink
+	// Make sure we saw and handled a dereferenced symlink
 	if !externalTargetFound {
-		t.Fatal("expected to find nested symlink")
+		t.Fatal("expected to find dereferenced symlink")
 	}
 
 	// Make sure the .git directory is ignored
