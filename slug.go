@@ -158,6 +158,12 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 		ignoreRules = parseIgnoreFile(src)
 	}
 
+	// Ensure the source path provided is absolute
+	src, err = filepath.Abs(src)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read absolute path for source: %w", err)
+	}
+
 	// Walk the tree of files.
 	err = filepath.Walk(src, p.packWalkFn(src, src, src, tarW, meta, ignoreRules))
 	if err != nil {
@@ -264,7 +270,7 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 			// If the target is a directory we can recurse into the target
 			// directory by calling the packWalkFn with updated arguments.
 			if resolved.info.IsDir() {
-				return filepath.Walk(resolved.absTarget, p.packWalkFn(root, resolved.target, path, tarW, meta, ignoreRules))
+				return filepath.Walk(resolved.absTarget, p.packWalkFn(root, resolved.absTarget, path, tarW, meta, ignoreRules))
 			}
 
 			// Dereference this symlink by updating the header with the target file

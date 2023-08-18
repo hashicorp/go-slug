@@ -55,6 +55,43 @@ func TestPack_rootIsSymlink(t *testing.T) {
 	}
 }
 
+func TestPack_absoluteSrcRelativeSymlinks(t *testing.T) {
+	var path string
+	var err error
+
+	// In instances we run within CI, we want to fetch
+	// the absolute path where our test is located
+	if workDir, ok := os.LookupEnv("GITHUB_WORKSPACE"); ok {
+		path = workDir
+	} else {
+		path, err = os.Getwd()
+		if err != nil {
+			t.Fatalf("could not determine the working dir: %v", err)
+		}
+	}
+
+	// One last check, if this variable is empty we'll error
+	// since we need the absolute path for the source
+	if path == "" {
+		t.Fatal("Home directory could not be determined")
+	}
+
+	path = filepath.Join(path, "testdata/archive-dir-absolute/dev")
+	slug := bytes.NewBuffer(nil)
+	_, err = Pack(path, slug, true)
+	if err != nil {
+		// We simply want to ensure paths can be resolved while
+		// traversing the source directory
+		t.Fatalf("err: %v", err)
+	}
+
+	// Cannot pack without dereferencing
+	_, err = Pack(path, slug, false)
+	if !strings.HasPrefix(err.Error(), "illegal slug error:") {
+		t.Fatalf("expected illegal slug error, got %q", err)
+	}
+}
+
 func TestPackWithoutIgnoring(t *testing.T) {
 	slug := bytes.NewBuffer(nil)
 
@@ -1057,7 +1094,8 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 
 	tarR := tar.NewReader(gzipR)
 	var (
-		symFound            bool
+		sym1Found           bool
+		sym2Found           bool
 		externalTargetFound bool
 		fileList            []string
 		slugSize            int64
@@ -1084,25 +1122,35 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 			if hdr.Linkname != "../bar.txt" {
 				t.Fatalf("expect target of '../bar.txt', got %q", hdr.Linkname)
 			}
-			symFound = true
+			sym1Found = true
+		}
+
+		if hdr.Name == "sub2/bar.txt" {
+			if hdr.Typeflag != tar.TypeSymlink {
+				t.Fatalf("expect symlink for file 'sub2/bar.txt'")
+			}
+			if hdr.Linkname != "../sub/bar.txt" {
+				t.Fatalf("expect target of '../sub/bar.txt', got %q", hdr.Linkname)
+			}
+			sym2Found = true
 		}
 
 		if hdr.Name == "example.tf" {
-			if hdr.Typeflag != tar.TypeSymlink {
-				t.Fatalf("expected symlink file 'example.tf'")
+			if hdr.Typeflag != tar.TypeReg {
+				t.Fatalf("expected symlink to be dereferenced 'example.tf'")
 			}
 			externalTargetFound = true
 		}
 	}
 
 	// Make sure we saw and handled a symlink
-	if !symFound {
-		t.Fatal("expected to find symlink")
+	if !sym1Found || !sym2Found {
+		t.Fatal("expected to find two symlinks")
 	}
 
-	// Make sure we saw and handled a nested symlink
+	// Make sure we saw and handled a dereferenced symlink
 	if !externalTargetFound {
-		t.Fatal("expected to find nested symlink")
+		t.Fatal("expected to find dereferenced symlink")
 	}
 
 	// Make sure the .git directory is ignored
