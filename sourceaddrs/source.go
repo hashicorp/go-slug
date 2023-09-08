@@ -33,7 +33,7 @@ func ParseSource(given string) (Source, error) {
 		return nil, fmt.Errorf("a valid source address is required")
 	}
 	switch {
-	case looksLikeLocalSource(given):
+	case looksLikeLocalSource(given) || given == "." || given == "..":
 		ret, err := ParseLocalSource(given)
 		if err != nil {
 			return nil, fmt.Errorf("invalid local source address %q: %w", given, err)

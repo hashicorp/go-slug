@@ -45,6 +45,30 @@ func TestParseSource(t *testing.T) {
 			},
 		},
 		{
+			Given: "../",
+			Want: LocalSource{
+				relPath: "../",
+			},
+		},
+		{
+			Given:   "..",
+			WantErr: `invalid local source address "..": relative path must be written in canonical form "../"`,
+		},
+		{
+			Given: "./",
+			Want: LocalSource{
+				relPath: "./",
+			},
+		},
+		{
+			Given:   ".",
+			WantErr: `invalid local source address ".": relative path must be written in canonical form "./"`,
+		},
+		{
+			Given:   "./.",
+			WantErr: `invalid local source address "./.": relative path must be written in canonical form "./"`,
+		},
+		{
 			Given:   "../boop/../beep",
 			WantErr: `invalid local source address "../boop/../beep": relative path must be written in canonical form "../beep"`,
 		},

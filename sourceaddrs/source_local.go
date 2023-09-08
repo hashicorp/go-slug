@@ -45,7 +45,7 @@ func ParseLocalSource(given string) (LocalSource, error) {
 
 	// We distinguish local source addresses from other address types by them
 	// starting with some kind of relative path prefix.
-	if !looksLikeLocalSource(given) {
+	if !looksLikeLocalSource(given) && given != "." && given != ".." {
 		return LocalSource{}, fmt.Errorf("must start with either ./ or ../ to indicate a local path")
 	}
 
@@ -55,10 +55,12 @@ func ParseLocalSource(given string) (LocalSource, error) {
 	// exceptions:
 	// - we need to retain the leading "./", if it was originally present, to
 	//   disambiguate from module registry addresses.
-	// - If the cleaned path is just ".." then we need a slash on the end
+	// - If the cleaned path is just "." or ".." then we need a slash on the end
 	//   because that's part of how we recognize an address as a relative path.
 	if clean == ".." {
 		clean = "../"
+	} else if clean == "." {
+		clean = "./"
 	}
 	if !looksLikeLocalSource(clean) {
 		clean = "./" + clean
