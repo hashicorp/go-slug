@@ -128,7 +128,7 @@ func (diag diagnosticInSourcePackage) Severity() DiagSeverity {
 }
 
 func (diag diagnosticInSourcePackage) Source() DiagSource {
-	ret := diag.Source()
+	ret := diag.wrapped.Source()
 	if ret.Subject != nil && sourceaddrs.ValidSubPath(ret.Subject.Filename) {
 		newRng := *ret.Subject // shallow copy
 		newRng.Filename = diag.pkg.SourceAddr(newRng.Filename).String()
