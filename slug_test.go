@@ -7,12 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hashicorp/go-slug/internal/unpackinfo"
 )
 
 func TestPack(t *testing.T) {
@@ -539,13 +543,28 @@ func TestUnpack(t *testing.T) {
 
 	// Verify all the files
 	verifyFile(t, filepath.Join(dst, "bar.txt"), 0, "bar\n")
-	verifyFile(t, filepath.Join(dst, "sub", "bar.txt"), os.ModeSymlink, "../bar.txt")
-	verifyFile(t, filepath.Join(dst, "sub", "zip.txt"), 0, "zip\n")
+	verifyFile(t, filepath.Join(dst, "sub/bar.txt"), os.ModeSymlink, "../bar.txt")
+	verifyFile(t, filepath.Join(dst, "sub/zip.txt"), 0, "zip\n")
+
+	// Verify timestamps for files
+	verifyTimestamps(t, "testdata/archive-dir-no-external/bar.txt", filepath.Join(dst, "bar.txt"))
+	verifyTimestamps(t, "testdata/archive-dir-no-external/sub/zip.txt", filepath.Join(dst, "sub/zip.txt"))
+	verifyTimestamps(t, "testdata/archive-dir-no-external/sub2/zip.txt", filepath.Join(dst, "sub2/zip.txt"))
+
+	// Verify timestamps for symlinks
+	if unpackinfo.CanMaintainSymlinkTimestamps() {
+		verifyTimestamps(t, "testdata/archive-dir-no-external/sub/bar.txt", filepath.Join(dst, "sub/bar.txt"))
+	}
+
+	// Verify timestamps for directories
+	verifyTimestamps(t, "testdata/archive-dir-no-external/foo.terraform", filepath.Join(dst, "foo.terraform"))
+	verifyTimestamps(t, "testdata/archive-dir-no-external/sub", filepath.Join(dst, "sub"))
+	verifyTimestamps(t, "testdata/archive-dir-no-external/sub2", filepath.Join(dst, "sub2"))
 
 	// Check that we can set permissions properly
 	verifyPerms(t, filepath.Join(dst, "bar.txt"), 0644)
-	verifyPerms(t, filepath.Join(dst, "sub", "zip.txt"), 0644)
-	verifyPerms(t, filepath.Join(dst, "sub", "bar.txt"), 0644)
+	verifyPerms(t, filepath.Join(dst, "sub/zip.txt"), 0644)
+	verifyPerms(t, filepath.Join(dst, "sub/bar.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "exe"), 0755)
 }
 
@@ -621,7 +640,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 		{
 			desc: "extended pax header",
 			headers: []*tar.Header{
-				&tar.Header{
+				{
 					Name:     "h",
 					Typeflag: tar.TypeXHeader,
 				},
@@ -630,7 +649,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 		{
 			desc: "global pax header",
 			headers: []*tar.Header{
-				&tar.Header{
+				{
 					Name:     "h",
 					Typeflag: tar.TypeXGlobalHeader,
 				},
@@ -1078,7 +1097,6 @@ func TestUnpackEmptyName(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	// This crashes unless the bug is fixed
 	err = Unpack(&buf, dir)
 	if err != nil {
 		t.Fatalf("err:%v", err)
@@ -1227,28 +1245,47 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 	}
 }
 
-func verifyFile(t *testing.T, path string, mode os.FileMode, expect string) {
-	info, err := os.Lstat(path)
+func verifyTimestamps(t *testing.T, src, dst string) {
+	sourceInfo, err := os.Lstat(src)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("source file %q not found", src)
+	}
+
+	dstInfo, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatalf("dst file %q not found", dst)
+	}
+
+	sourceModTime := sourceInfo.ModTime().Truncate(time.Second)
+	destModTime := dstInfo.ModTime().Truncate(time.Second)
+
+	if !sourceModTime.Equal(destModTime) {
+		t.Fatalf("source %q and dst %q do not have the same mtime (%q and %q, respectively)", src, dst, sourceModTime, destModTime)
+	}
+}
+
+func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarget string) {
+	info, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatalf("dst file %q not found", dst)
 	}
 
 	if info.Mode()&os.ModeSymlink != 0 {
-		if mode == os.ModeSymlink {
-			if target, _ := os.Readlink(path); target != expect {
-				t.Fatalf("expect link target %q, got %q", expect, target)
+		if expectedMode == os.ModeSymlink {
+			if target, _ := os.Readlink(dst); target != expectedTarget {
+				t.Fatalf("expect link target %q, got %q", expectedTarget, target)
 			}
 			return
 		} else {
-			t.Fatalf("found symlink, expected %v", mode)
+			t.Fatalf("found symlink, expected %v", expectedMode)
 		}
 	}
 
-	if !((mode == 0 && info.Mode().IsRegular()) || info.Mode()&mode == 0) {
-		t.Fatalf("wrong file mode for %q", path)
+	if !((expectedMode == 0 && info.Mode().IsRegular()) || info.Mode()&expectedMode == 0) {
+		t.Fatalf("wrong file mode for %q", dst)
 	}
 
-	fh, err := os.Open(path)
+	fh, err := os.Open(dst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1258,9 +1295,9 @@ func verifyFile(t *testing.T, path string, mode os.FileMode, expect string) {
 	if _, err := fh.Read(raw); err != nil {
 		t.Fatal(err)
 	}
-	if result := string(raw); result != expect {
+	if result := string(raw); result != expectedTarget {
 		t.Fatalf("bad content in file %q\n\nexpect:\n%#v\n\nactual:\n%#v",
-			path, expect, result)
+			dst, expectedTarget, result)
 	}
 }
 
