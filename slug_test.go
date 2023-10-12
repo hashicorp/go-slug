@@ -1256,8 +1256,8 @@ func verifyTimestamps(t *testing.T, src, dst string) {
 		t.Fatalf("dst file %q not found", dst)
 	}
 
-	sourceModTime := sourceInfo.ModTime().Truncate(time.Second)
-	destModTime := dstInfo.ModTime().Truncate(time.Second)
+	sourceModTime := sourceInfo.ModTime().Round(time.Second)
+	destModTime := dstInfo.ModTime().Round(time.Second)
 
 	if !sourceModTime.Equal(destModTime) {
 		t.Fatalf("source %q and dst %q do not have the same mtime (%q and %q, respectively)", src, dst, sourceModTime, destModTime)
