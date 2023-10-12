@@ -1256,8 +1256,10 @@ func verifyTimestamps(t *testing.T, src, dst string) {
 		t.Fatalf("dst file %q not found", dst)
 	}
 
+	// archive/tar purports to round timestamps to the nearest second so that behavior
+	// is duplicated here to test the restored timestamps.
 	sourceModTime := sourceInfo.ModTime().Round(time.Second)
-	destModTime := dstInfo.ModTime().Round(time.Second)
+	destModTime := dstInfo.ModTime()
 
 	if !sourceModTime.Equal(destModTime) {
 		t.Fatalf("source %q and dst %q do not have the same mtime (%q and %q, respectively)", src, dst, sourceModTime, destModTime)
