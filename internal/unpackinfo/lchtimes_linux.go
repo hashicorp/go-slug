@@ -1,5 +1,5 @@
-//go:build darwin || linux
-// +build darwin linux
+//go:build linux
+// +build linux
 
 package unpackinfo
 
@@ -13,8 +13,8 @@ import (
 // archive/tar so there is no need for subsecond precision.
 func (i UnpackInfo) Lchtimes() error {
 	return unix.Lutimes(i.Path, []unix.Timeval{
-		{Sec: i.OriginalAccessTime.Unix(), Usec: int32(i.OriginalAccessTime.UnixMicro() % 1000)},
-		{Sec: i.OriginalModTime.Unix(), Usec: int32(i.OriginalModTime.UnixMicro() % 1000)}},
+		{Sec: i.OriginalAccessTime.Unix(), Usec: i.OriginalAccessTime.UnixMicro() % 1000},
+		{Sec: i.OriginalModTime.Unix(), Usec: i.OriginalModTime.UnixMicro() % 1000}},
 	)
 }
 
