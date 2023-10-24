@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -107,17 +106,6 @@ func (i UnpackInfo) IsTypeX() bool {
 // IsRegular describes whether the file being unpacked is a regular file
 func (i UnpackInfo) IsRegular() bool {
 	return i.Typeflag == tar.TypeReg || i.Typeflag == tar.TypeRegA
-}
-
-// CanMaintainSymlinkTimestamps determines whether is is possible to change
-// timestamps on symlinks for the the current platform. For regular files
-// and directories, attempts are made to restore permissions and timestamps
-// after extraction. But for symbolic links, go's cross-platform
-// packages (Chmod and Chtimes) are not capable of changing symlink info
-// because those methods follow the symlinks. However, a platform-dependent option
-// is provided for linux and darwin (see Lchtimes)
-func CanMaintainSymlinkTimestamps() bool {
-	return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
 }
 
 // RestoreInfo changes the file mode and timestamps for the given UnpackInfo data
