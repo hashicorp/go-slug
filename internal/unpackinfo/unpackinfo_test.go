@@ -139,7 +139,7 @@ func TestUnpackInfo_RestoreInfo(t *testing.T) {
 				t.Errorf("%q mode %q did not match expected header mode %q", info.Path, stat.Mode(), info.OriginalMode)
 			}
 		} else if CanMaintainSymlinkTimestamps() {
-			if !stat.ModTime().Truncate(time.Second).Equal(exampleModTime) {
+			if !stat.ModTime().Equal(exampleModTime) {
 				t.Errorf("%q modtime %q did not match example", info.Path, stat.ModTime())
 			}
 		}

@@ -136,12 +136,12 @@ func (i UnpackInfo) RestoreInfo() error {
 }
 
 func (i UnpackInfo) restoreDirectory() error {
-	if err := os.Chtimes(i.Path, i.OriginalAccessTime, i.OriginalModTime); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed setting times on directory %q: %w", i.Path, err)
-	}
-
 	if err := os.Chmod(i.Path, i.OriginalMode); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
+	}
+
+	if err := os.Chtimes(i.Path, i.OriginalAccessTime, i.OriginalModTime); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed setting times on directory %q: %w", i.Path, err)
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 // This capability is only available on Linux and Darwin as of now.
 func (i UnpackInfo) Lchtimes() error {
 	return unix.Lutimes(i.Path, []unix.Timeval{
-		{Sec: i.OriginalAccessTime.Unix()},
-		{Sec: i.OriginalModTime.Unix()}},
+		{Sec: i.OriginalAccessTime.Unix(), Usec: int32(i.OriginalAccessTime.UnixMicro() % 1000)},
+		{Sec: i.OriginalModTime.Unix(), Usec: int32(i.OriginalModTime.UnixMicro() % 1000)}},
 	)
 }

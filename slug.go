@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
@@ -227,7 +228,12 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 		}
 
 		fm := info.Mode()
+		// An "Unknown" format is imposed because this is the default but also because
+		// it imposes the simplest behavior. Notably, the mod time is preserved by rounding
+		// to the nearest second. During unpacking, these rounded timestamps are restored
+		// upon the corresponding file/directory/symlink.
 		header := &tar.Header{
+			Format:  tar.FormatUnknown,
 			Name:    filepath.ToSlash(subpath),
 			ModTime: info.ModTime(),
 			Mode:    int64(fm.Perm()),
@@ -471,7 +477,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 	}
 
 	// Now that extraction is complete, restore mode and timestamps previously saved
-	// about directories.
+	// about directories. But first, sort the list of directories by lexical order, which
+	// should impose a top-down ordering so that, in case subdirectories appear first in
+	// the archive, they won't change the modified timestamps of their parent directories.
+	sort.Slice(directoriesExtracted, func(i, j int) bool {
+		return directoriesExtracted[i].Path < directoriesExtracted[j].Path
+	})
+
 	for _, dir := range directoriesExtracted {
 		if err := dir.RestoreInfo(); err != nil {
 			return err
