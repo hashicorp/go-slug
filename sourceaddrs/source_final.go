@@ -3,6 +3,7 @@ package sourceaddrs
 import (
 	"fmt"
 	"path"
+	"strings"
 )
 
 // FinalSource is a variant of [Source] that always refers to a single
@@ -16,6 +17,42 @@ type FinalSource interface {
 	finalSourceSigil()
 
 	String() string
+}
+
+// ParseFinalSource attempts to parse the given string as any one of the three
+// supported final source address types, recognizing which type it belongs to
+// based on the syntax differences between the address forms.
+func ParseFinalSource(given string) (FinalSource, error) {
+	if strings.TrimSpace(given) != given {
+		return nil, fmt.Errorf("source address must not have leading or trailing spaces")
+	}
+	if len(given) == 0 {
+		return nil, fmt.Errorf("a valid source address is required")
+	}
+	switch {
+	case looksLikeLocalSource(given) || given == "." || given == "..":
+		ret, err := ParseLocalSource(given)
+		if err != nil {
+			return nil, fmt.Errorf("invalid local source address %q: %w", given, err)
+		}
+		return ret, nil
+	case looksLikeFinalRegistrySource(given):
+		ret, err := ParseFinalRegistrySource(given)
+		if err != nil {
+			return nil, fmt.Errorf("invalid module registry source address %q: %w", given, err)
+		}
+		return ret, nil
+	default:
+		// If it's neither a local source nor a final module registry source
+		// then we'll assume it's intended to be a remote source.
+		// (This parser will return a suitable error if the given string
+		// is not of any of the supported address types.)
+		ret, err := ParseRemoteSource(given)
+		if err != nil {
+			return nil, fmt.Errorf("invalid remote source address %q: %w", given, err)
+		}
+		return ret, nil
+	}
 }
 
 // FinalSourceFilename returns the base name (in the same sense as [path.Base])
