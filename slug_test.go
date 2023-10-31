@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -566,6 +567,50 @@ func TestUnpack(t *testing.T) {
 	verifyPerms(t, filepath.Join(dst, "sub/zip.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "sub/bar.txt"), 0644)
 	verifyPerms(t, filepath.Join(dst, "exe"), 0755)
+}
+
+func TestUnpack_HeaderOrdering(t *testing.T) {
+	// Tests that when a tar file has subdirectories ordered before parent directories, the
+	// timestamps get restored correctly in the plaform where the tests are run.
+
+	// This file is created by the go program found in `testdata/subdir-ordering`
+	f, err := os.Open("testdata/subdir-appears-first.tar.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+
+	packer, err := NewPacker()
+	if err != nil {
+		t.Fatalf("expected no error, got %s", err)
+	}
+
+	err = packer.Unpack(f, dir)
+	if err != nil {
+		t.Fatalf("expected no error, got %s", err)
+	}
+
+	// These times were recorded when the archive was created
+	testCases := []struct {
+		Path string
+		TS   time.Time
+	}{
+		{TS: time.Unix(0, 1698787142347461403).Round(time.Second), Path: path.Join(dir, "super/duper")},
+		{TS: time.Unix(0, 1698780461367973574).Round(time.Second), Path: path.Join(dir, "super")},
+		{TS: time.Unix(0, 1698787142347461286).Round(time.Second), Path: path.Join(dir, "super/duper/trooper")},
+		{TS: time.Unix(0, 1698780470254368545).Round(time.Second), Path: path.Join(dir, "super/duper/trooper/foo.txt")},
+	}
+
+	for _, tc := range testCases {
+		info, err := os.Stat(tc.Path)
+		if err != nil {
+			t.Fatalf("error when stat %q: %s", tc.Path, err)
+		}
+		if info.ModTime() != tc.TS {
+			t.Errorf("timestamp of file %q (%d) did not match expected value %d", tc.Path, info.ModTime().UnixNano(), tc.TS.UnixNano())
+		}
+	}
 }
 
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {

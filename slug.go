@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
@@ -475,14 +474,6 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			return err
 		}
 	}
-
-	// Now that extraction is complete, restore mode and timestamps previously saved
-	// about directories. But first, sort the list of directories by lexical order, which
-	// should impose a top-down ordering so that, in case subdirectories appear first in
-	// the archive, they won't change the modified timestamps of their parent directories.
-	sort.Slice(directoriesExtracted, func(i, j int) bool {
-		return directoriesExtracted[i].Path < directoriesExtracted[j].Path
-	})
 
 	for _, dir := range directoriesExtracted {
 		if err := dir.RestoreInfo(); err != nil {

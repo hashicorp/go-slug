@@ -8,13 +8,11 @@ import (
 )
 
 // Lchtimes modifies the access and modified timestamps on a target path
-// This capability is only available on Linux and Darwin as of now. The
-// timestamps within UnpackInfo would have already been rounded by
-// archive/tar so there is no need for subsecond precision.
+// This capability is only available on Linux and Darwin as of now.
 func (i UnpackInfo) Lchtimes() error {
 	return unix.Lutimes(i.Path, []unix.Timeval{
-		{Sec: i.OriginalAccessTime.Unix(), Usec: i.OriginalAccessTime.UnixMicro() % 1000},
-		{Sec: i.OriginalModTime.Unix(), Usec: i.OriginalModTime.UnixMicro() % 1000}},
+		{Sec: i.OriginalAccessTime.Unix(), Usec: int64(i.OriginalAccessTime.Nanosecond() / 1e6 % 1e6)},
+		{Sec: i.OriginalModTime.Unix(), Usec: int64(i.OriginalModTime.Nanosecond() / 1e6 % 1e6)}},
 	)
 }
 
