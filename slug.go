@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
+	"github.com/hashicorp/go-slug/internal/unpackinfo"
 )
 
 // Meta provides detailed information about a slug.
@@ -226,7 +227,12 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 		}
 
 		fm := info.Mode()
+		// An "Unknown" format is imposed because this is the default but also because
+		// it imposes the simplest behavior. Notably, the mod time is preserved by rounding
+		// to the nearest second. During unpacking, these rounded timestamps are restored
+		// upon the corresponding file/directory/symlink.
 		header := &tar.Header{
+			Format:  tar.FormatUnknown,
 			Name:    filepath.ToSlash(subpath),
 			ModTime: info.ModTime(),
 			Mode:    int64(fm.Perm()),
@@ -354,8 +360,9 @@ func (p *Packer) resolveExternalLink(root string, path string) (*externalSymlink
 }
 
 // Unpack is used to read and extract the contents of a slug to the dst
-// directory. Symlinks within the slug are supported, provided their targets
-// are relative and point to paths within the destination directory.
+// directory, which must be an absolute path. Symlinks within the slug
+// are supported, provided their targets are relative and point to paths
+// within the destination directory.
 func Unpack(r io.Reader, dst string) error {
 	p := &Packer{}
 	return p.Unpack(r, dst)
@@ -363,10 +370,18 @@ func Unpack(r io.Reader, dst string) error {
 
 // Unpack unpacks the archive data in r into directory dst.
 func (p *Packer) Unpack(r io.Reader, dst string) error {
+	// Track directory times and permissions so they can be restored after all files
+	// are extracted. This metadata modification is delayed because extracting files
+	// into a new directory would necessarily change its timestamps. By way of
+	// comparison, see
+	// https://www.gnu.org/software/tar/manual/html_node/Directory-Modification-Times-and-Permissions.html
+	// for more details about how tar attempts to preserve file metadata.
+	directoriesExtracted := []unpackinfo.UnpackInfo{}
+
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("failed to uncompress slug: %w", err)
+		return fmt.Errorf("failed to decompress slug: %w", err)
 	}
 
 	// Untar as we read.
@@ -382,71 +397,29 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			return fmt.Errorf("failed to untar slug: %w", err)
 		}
 
-		path := header.Name
-
 		// If the entry has no name, ignore it.
-		if path == "" {
+		if header.Name == "" {
 			continue
 		}
 
-		// Get rid of absolute paths.
-		if path[0] == '/' {
-			path = path[1:]
-		}
-		path = filepath.Join(dst, path)
-
-		// Check for paths outside our directory, they are forbidden
-		target := filepath.Clean(path)
-		if !strings.HasPrefix(target, dst) {
-			return &IllegalSlugError{
-				Err: fmt.Errorf("invalid filename, traversal with \"..\" outside of current directory"),
-			}
-		}
-
-		// Ensure the destination is not through any symlinks. This prevents
-		// any files from being deployed through symlinks defined in the slug.
-		// There are malicious cases where this could be used to escape the
-		// slug's boundaries (zipslip), and any legitimate use is questionable
-		// and likely indicates a hand-crafted tar file, which we are not in
-		// the business of supporting here.
-		//
-		// The strategy is to Lstat each path  component from dst up to the
-		// immediate parent directory of the file name in the tarball, checking
-		// the mode on each to ensure we wouldn't be passing through any
-		// symlinks.
-		currentPath := dst // Start at the root of the unpacked tarball.
-		components := strings.Split(header.Name, "/")
-
-		for i := 0; i < len(components)-1; i++ {
-			currentPath = filepath.Join(currentPath, components[i])
-			fi, err := os.Lstat(currentPath)
-			if os.IsNotExist(err) {
-				// Parent directory structure is incomplete. Technically this
-				// means from here upward cannot be a symlink, so we cancel the
-				// remaining path tests.
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("failed to evaluate path %q: %w", header.Name, err)
-			}
-			if fi.Mode()&os.ModeSymlink != 0 {
-				return &IllegalSlugError{
-					Err: fmt.Errorf("cannot extract %q through symlink", header.Name),
-				}
-			}
+		info, err := unpackinfo.NewUnpackInfo(dst, header)
+		if err != nil {
+			return &IllegalSlugError{Err: err}
 		}
 
 		// Make the directories to the path.
-		dir := filepath.Dir(path)
+		dir := filepath.Dir(info.Path)
+
+		// Timestamps and permissions will be restored after all files are extracted.
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %q: %w", dir, err)
 		}
 
-		// Handle symlinks.
-		if header.Typeflag == tar.TypeSymlink {
+		// Handle symlinks, directories, non-regular files
+		if info.IsSymlink() {
 			if ok, err := p.validSymlink(dst, header.Name, header.Linkname); ok {
 				// Create the symlink.
-				if err = os.Symlink(header.Linkname, path); err != nil {
+				if err = os.Symlink(header.Linkname, info.Path); err != nil {
 					return fmt.Errorf("failed creating symlink (%q -> %q): %w",
 						header.Name, header.Linkname, err)
 				}
@@ -454,47 +427,60 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 				return err
 			}
 
+			if err := info.RestoreInfo(); err != nil {
+				return err
+			}
+
 			continue
 		}
 
-		// Only unpack regular files from this point on.
-		if header.Typeflag == tar.TypeDir || header.Typeflag == tar.TypeXGlobalHeader || header.Typeflag == tar.TypeXHeader {
+		if info.IsDirectory() {
+			// Restore directory info after all files are extracted because
+			// the extraction process changes directory's timestamps.
+			directoriesExtracted = append(directoriesExtracted, info)
 			continue
-		} else if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
-			return fmt.Errorf("failed creating %q: unsupported type %c", path,
-				header.Typeflag)
+		}
+
+		// The remaining logic only applies to regular files
+		if !info.IsRegular() {
+			continue
 		}
 
 		// Open a handle to the destination.
-		fh, err := os.Create(path)
+		fh, err := os.Create(info.Path)
 		if err != nil {
 			// This mimics tar's behavior wrt the tar file containing duplicate files
 			// and it allowing later ones to clobber earlier ones even if the file
-			// has perms that don't allow overwriting.
+			// has perms that don't allow overwriting. The file permissions will be restored
+			// once the file contents are copied.
 			if os.IsPermission(err) {
-				os.Chmod(path, 0600)
-				fh, err = os.Create(path)
+				os.Chmod(info.Path, 0600)
+				fh, err = os.Create(info.Path)
 			}
 
 			if err != nil {
-				return fmt.Errorf("failed creating file %q: %w", path, err)
+				return fmt.Errorf("failed creating file %q: %w", info.Path, err)
 			}
 		}
 
-		// Copy the contents.
+		// Copy the contents of the file.
 		_, err = io.Copy(fh, untar)
 		fh.Close()
 		if err != nil {
-			return fmt.Errorf("failed to copy slug file %q: %w", path, err)
+			return fmt.Errorf("failed to copy slug file %q: %w", info.Path, err)
 		}
 
-		// Restore the file mode. We have to do this after writing the file,
-		// since it is possible we have a read-only mode.
-		mode := header.FileInfo().Mode()
-		if err := os.Chmod(path, mode); err != nil {
-			return fmt.Errorf("failed setting permissions on %q: %w", path, err)
+		if err := info.RestoreInfo(); err != nil {
+			return err
 		}
 	}
+
+	for _, dir := range directoriesExtracted {
+		if err := dir.RestoreInfo(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
