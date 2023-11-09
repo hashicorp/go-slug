@@ -1,5 +1,5 @@
-//go:build linux
-// +build linux
+//go:build linux_amd64 || linux_arm64
+// +build linux_amd64 linux_arm64
 
 package unpackinfo
 
