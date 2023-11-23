@@ -17,6 +17,16 @@ type Ruleset struct {
 	rules []rule
 }
 
+// ExcludesResult is the result of matching a path against a Ruleset. A result
+// is a Match if it matches a set of paths that are excluded by the rules in a
+// Ruleset. A matching result is Dominating if none of the rules that follow it
+// contain an exclusion, implying that if the rule excludes a directory,
+// everything below that directory may be ignored.
+type ExcludesResult struct {
+	Match      bool
+	Dominating bool
+}
+
 // ParseIgnoreFileContent takes a reader over the content of a .terraformignore
 // file and returns the Ruleset described by that file, or an error if the
 // file is invalid.
@@ -57,19 +67,20 @@ func LoadPackageIgnoreRules(packageDir string) (*Ruleset, error) {
 // excluded by the rules in the ruleset.
 //
 // If any of the rules in the ruleset have invalid syntax then Excludes will
-// return an error, but it will also still return a boolean result which
+// return an error, but it will also still return a result which
 // considers all of the remaining valid rules, to support callers that want to
 // just ignore invalid exclusions. Such callers can safely ignore the error
 // result:
 //
-//     exc, _ = ruleset.Excludes(path)
-func (r *Ruleset) Excludes(path string) (bool, error) {
+//	exc, matching, _ = ruleset.Excludes(path)
+func (r *Ruleset) Excludes(path string) (ExcludesResult, error) {
 	if r == nil {
-		return false, nil
+		return ExcludesResult{}, nil
 	}
 
 	var retErr error
 	foundMatch := false
+	dominating := false
 	for _, rule := range r.rules {
 		match, err := rule.match(path)
 		if err != nil {
@@ -82,15 +93,19 @@ func (r *Ruleset) Excludes(path string) (bool, error) {
 		}
 		if match {
 			foundMatch = !rule.excluded
+			dominating = foundMatch && !rule.exclusionsAfter
 		}
 	}
-	return foundMatch, retErr
+	return ExcludesResult{
+		Match:      foundMatch,
+		Dominating: dominating,
+	}, retErr
 }
 
 // Includes is the inverse of [Ruleset.Excludes].
 func (r *Ruleset) Includes(path string) (bool, error) {
-	notRet, err := r.Excludes(path)
-	return !notRet, err
+	result, err := r.Excludes(path)
+	return !result.Match, err
 }
 
 var DefaultRuleset *Ruleset

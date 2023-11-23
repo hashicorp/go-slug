@@ -19,6 +19,7 @@ func TestTerraformIgnore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	type file struct {
 		// the actual path, should be file path format /dir/subdir/file.extension
 		path string
@@ -112,13 +113,51 @@ func TestTerraformIgnore(t *testing.T) {
 		},
 	}
 	for i, p := range paths {
-		match, err := rs.Excludes(p.path)
+		result, err := rs.Excludes(p.path)
 		if err != nil {
 			t.Errorf("invalid rule syntax when checking %s at index %d", p.path, i)
 			continue
 		}
-		if match != p.match {
+		if result.Match != p.match {
 			t.Fatalf("%s at index %d should be %t", p.path, i, p.match)
 		}
 	}
+}
+
+func TestTerraformIgnoreNoExclusionOptimization(t *testing.T) {
+	rs, err := LoadPackageIgnoreRules("testdata/with-exclusion")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs.rules) != 7 {
+		t.Fatalf("Expected 7 rules, got %d", len(rs.rules))
+	}
+
+	// reflects that no exclusions follow the last rule
+	afterValue := false
+	for i := len(rs.rules) - 1; i >= 0; i-- {
+		r := rs.rules[i]
+		if r.exclusionsAfter != afterValue {
+			t.Errorf("Expected exclusionsAfter to be %v at index %d", afterValue, i)
+		}
+		if r.excluded {
+			afterValue = true
+		}
+	}
+
+	// last two will be dominating
+	for _, r := range []string{"logs/", "tmp/"} {
+		result, err := rs.Excludes(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.Dominating {
+			t.Errorf("Expected %q to be a dominating rule", r)
+		}
+	}
+
+	if actual, _ := rs.Excludes("src/baz/ignored"); !actual.Match {
+		t.Errorf("Expected %q to be excluded, but it was included", "src/baz/ignored")
+	}
+
 }

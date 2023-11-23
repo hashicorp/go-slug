@@ -632,7 +632,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 		if err != nil {
 			return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 		}
-		if ignored {
+		if ignored.Match {
 			err := os.RemoveAll(absPath)
 			if err != nil {
 				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
@@ -642,12 +642,17 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 
 		// For directories we also need to check with a path separator on the
 		// end, which ignores entire subtrees.
+		//
+		// TODO: What about exclusion rules that follow a matching directory?
+		// Example:
+		//   /logs
+		//   !/logs/production/*
 		if info.IsDir() {
 			ignored, err := ignoreRules.Excludes(relPath + string(os.PathSeparator))
 			if err != nil {
 				return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 			}
-			if ignored {
+			if ignored.Match {
 				err := os.RemoveAll(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)

@@ -31,7 +31,7 @@ func parseIgnoreFile(rootPath string) *ignorefiles.Ruleset {
 	return ret
 }
 
-func matchIgnoreRules(path string, ruleset *ignorefiles.Ruleset) bool {
+func matchIgnoreRules(path string, ruleset *ignorefiles.Ruleset) ignorefiles.ExcludesResult {
 	// Ruleset.Excludes explicitly allows ignoring its error, in which
 	// case we are ignoring any individual invalid rules in the set
 	// but still taking all of the others into account.
