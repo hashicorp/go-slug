@@ -13,10 +13,11 @@ import (
 	"sync"
 
 	"github.com/apparentlymart/go-versions/versions"
-	"github.com/hashicorp/go-slug/internal/ignorefiles"
-	"github.com/hashicorp/go-slug/sourceaddrs"
 	regaddr "github.com/hashicorp/terraform-registry-address"
 	"golang.org/x/mod/sumdb/dirhash"
+
+	"github.com/hashicorp/go-slug/internal/ignorefiles"
+	"github.com/hashicorp/go-slug/sourceaddrs"
 )
 
 // Builder deals with the process of gathering source code
@@ -651,7 +652,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 				if err != nil {
 					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
 				}
-				return nil
+				return filepath.SkipDir
 			}
 		}
 
