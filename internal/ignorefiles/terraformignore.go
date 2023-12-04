@@ -15,6 +15,7 @@ func readRules(input io.Reader) ([]rule, error) {
 	rules := defaultExclusions
 	scanner := bufio.NewScanner(input)
 	scanner.Split(bufio.ScanLines)
+	currentRuleIndex := len(defaultExclusions) - 1
 
 	for scanner.Scan() {
 		pattern := scanner.Text()
@@ -32,8 +33,15 @@ func readRules(input io.Reader) ([]rule, error) {
 		rule := rule{}
 		// Exclusions
 		if pattern[0] == '!' {
-			rule.excluded = true
+			rule.negated = true
 			pattern = pattern[1:]
+			// Mark all previous rules as having negations after it
+			for i := currentRuleIndex; i >= 0; i-- {
+				if rules[i].negationsAfter {
+					break
+				}
+				rules[i].negationsAfter = true
+			}
 		}
 		// If it is a directory, add ** so we catch descendants
 		if pattern[len(pattern)-1] == os.PathSeparator {
@@ -49,6 +57,7 @@ func readRules(input io.Reader) ([]rule, error) {
 		rule.val = pattern
 		rule.dirs = strings.Split(pattern, string(os.PathSeparator))
 		rules = append(rules, rule)
+		currentRuleIndex += 1
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -58,10 +67,11 @@ func readRules(input io.Reader) ([]rule, error) {
 }
 
 type rule struct {
-	val      string         // the value of the rule itself
-	excluded bool           // ! is present, an exclusion rule
-	dirs     []string       // directories of the rule
-	regex    *regexp.Regexp // regular expression to match for the rule
+	val            string         // the value of the rule itself
+	negated        bool           // prefixed by !, a negated rule
+	negationsAfter bool           // negatied rules appear after this rule
+	dirs           []string       // directories of the rule
+	regex          *regexp.Regexp // regular expression to match for the rule
 }
 
 func (r *rule) match(path string) (bool, error) {
@@ -160,16 +170,16 @@ func (r *rule) compile() error {
 
 var defaultExclusions = []rule{
 	{
-		val:      strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
-		excluded: false,
+		val:     strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
+		negated: false,
 	},
 	{
-		val:      strings.Join([]string{"**", ".terraform", "**"}, string(os.PathSeparator)),
-		excluded: false,
+		val:     strings.Join([]string{"**", ".terraform", "**"}, string(os.PathSeparator)),
+		negated: false,
 	},
 	{
-		val:      strings.Join([]string{"**", ".terraform", "modules", "**"}, string(os.PathSeparator)),
-		excluded: true,
+		val:     strings.Join([]string{"**", ".terraform", "modules", "**"}, string(os.PathSeparator)),
+		negated: true,
 	},
 }
 
