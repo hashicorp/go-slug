@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 //go:build linux_amd64 || linux_arm64
 // +build linux_amd64 linux_arm64
 

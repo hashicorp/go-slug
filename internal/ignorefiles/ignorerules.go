@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 // Package ignorefiles deals with the ".terraformignore" file format, which
 // is a convention similar to ".gitignore" that specifies path patterns that
 // match files Terraform should discard or ignore when interpreting a package

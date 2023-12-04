@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 // Package sourcebundle deals with the construction of and later consumption of
 // "source bundles", which are in some sense "meta-slugs" that capture a
 // variety of different source packages together into a single working
