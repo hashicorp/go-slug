@@ -18,12 +18,12 @@ type Ruleset struct {
 }
 
 // ExcludesResult is the result of matching a path against a Ruleset. A result
-// is a Match if it matches a set of paths that are excluded by the rules in a
+// is Excluded if it matches a set of paths that are excluded by the rules in a
 // Ruleset. A matching result is Dominating if none of the rules that follow it
-// contain an exclusion, implying that if the rule excludes a directory,
+// contain a negation, implying that if the rule excludes a directory,
 // everything below that directory may be ignored.
 type ExcludesResult struct {
-	Match      bool
+	Excluded   bool
 	Dominating bool
 }
 
@@ -92,12 +92,12 @@ func (r *Ruleset) Excludes(path string) (ExcludesResult, error) {
 			}
 		}
 		if match {
-			foundMatch = !rule.excluded
-			dominating = foundMatch && !rule.exclusionsAfter
+			foundMatch = !rule.negated
+			dominating = foundMatch && !rule.negationsAfter
 		}
 	}
 	return ExcludesResult{
-		Match:      foundMatch,
+		Excluded:   foundMatch,
 		Dominating: dominating,
 	}, retErr
 }
@@ -105,7 +105,7 @@ func (r *Ruleset) Excludes(path string) (ExcludesResult, error) {
 // Includes is the inverse of [Ruleset.Excludes].
 func (r *Ruleset) Includes(path string) (bool, error) {
 	result, err := r.Excludes(path)
-	return !result.Match, err
+	return !result.Excluded, err
 }
 
 var DefaultRuleset *Ruleset

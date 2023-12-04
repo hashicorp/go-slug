@@ -118,7 +118,7 @@ func TestTerraformIgnore(t *testing.T) {
 			t.Errorf("invalid rule syntax when checking %s at index %d", p.path, i)
 			continue
 		}
-		if result.Match != p.match {
+		if result.Excluded != p.match {
 			t.Fatalf("%s at index %d should be %t", p.path, i, p.match)
 		}
 	}
@@ -133,14 +133,14 @@ func TestTerraformIgnoreNoExclusionOptimization(t *testing.T) {
 		t.Fatalf("Expected 7 rules, got %d", len(rs.rules))
 	}
 
-	// reflects that no exclusions follow the last rule
+	// reflects that no negations follow the last rule
 	afterValue := false
 	for i := len(rs.rules) - 1; i >= 0; i-- {
 		r := rs.rules[i]
-		if r.exclusionsAfter != afterValue {
+		if r.negationsAfter != afterValue {
 			t.Errorf("Expected exclusionsAfter to be %v at index %d", afterValue, i)
 		}
-		if r.excluded {
+		if r.negated {
 			afterValue = true
 		}
 	}
@@ -156,7 +156,7 @@ func TestTerraformIgnoreNoExclusionOptimization(t *testing.T) {
 		}
 	}
 
-	if actual, _ := rs.Excludes("src/baz/ignored"); !actual.Match {
+	if actual, _ := rs.Excludes("src/baz/ignored"); !actual.Excluded {
 		t.Errorf("Expected %q to be excluded, but it was included", "src/baz/ignored")
 	}
 

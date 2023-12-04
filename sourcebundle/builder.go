@@ -632,7 +632,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 		if err != nil {
 			return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 		}
-		if ignored.Match {
+		if ignored.Excluded {
 			err := os.RemoveAll(absPath)
 			if err != nil {
 				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
@@ -652,7 +652,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 			if err != nil {
 				return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 			}
-			if ignored.Match {
+			if ignored.Excluded {
 				err := os.RemoveAll(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
