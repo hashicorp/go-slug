@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package sourcebundle
 
 // This file contains some internal-only types used to help with marshalling

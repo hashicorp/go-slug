@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package sourcebundle
 
 // PackageMeta is a collection of metadata about how the content of a
