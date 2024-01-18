@@ -23,13 +23,15 @@ type UnpackInfo struct {
 	OriginalAccessTime time.Time
 	OriginalModTime    time.Time
 	OriginalMode       fs.FileMode
-	Typeflag           byte
+	// NormalizedMode represents a normalized file mode
+	NormalizedMode FileMode
+	Typeflag       byte
 }
 
 // NewUnpackInfo returns an UnpackInfo based on a destination root and a tar header.
 // It will return an error if the header represents an illegal symlink extraction
 // or if the entry type is not supported by go-slug.
-func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
+func NewUnpackInfo(dst string, header *tar.Header) (*UnpackInfo, error) {
 	// Get rid of absolute paths.
 	path := header.Name
 
@@ -41,7 +43,7 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	// Check for paths outside our directory, they are forbidden
 	target := filepath.Clean(path)
 	if !strings.HasPrefix(target, dst) {
-		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
+		return nil, errors.New("invalid filename, traversal with \"..\" outside of current directory")
 	}
 
 	// Ensure the destination is not through any symlinks. This prevents
@@ -68,47 +70,57 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 			break
 		}
 		if err != nil {
-			return UnpackInfo{}, fmt.Errorf("failed to evaluate path %q: %w", header.Name, err)
+			return nil, fmt.Errorf("failed to evaluate path %q: %w", header.Name, err)
 		}
 		if fi.Mode()&fs.ModeSymlink != 0 {
-			return UnpackInfo{}, fmt.Errorf("cannot extract %q through symlink", header.Name)
+			return nil, fmt.Errorf("cannot extract %q through symlink", header.Name)
 		}
 	}
 
-	result := UnpackInfo{
+	result := &UnpackInfo{
 		Path:               path,
 		OriginalAccessTime: header.AccessTime,
 		OriginalModTime:    header.ModTime,
 		OriginalMode:       header.FileInfo().Mode(),
+		NormalizedMode:     Empty,
 		Typeflag:           header.Typeflag,
 	}
 
 	if !result.IsDirectory() && !result.IsSymlink() && !result.IsRegular() && !result.IsTypeX() {
-		return UnpackInfo{}, fmt.Errorf("failed creating %q, unsupported file type %c", path, result.Typeflag)
+		return nil, fmt.Errorf("failed creating %q, unsupported file type %c", path, result.Typeflag)
 	}
 
 	return result, nil
 }
 
 // IsSymlink describes whether the file being unpacked is a symlink
-func (i UnpackInfo) IsSymlink() bool {
+func (i *UnpackInfo) IsSymlink() bool {
 	return i.Typeflag == tar.TypeSymlink
 }
 
 // IsDirectory describes whether the file being unpacked is a directory
-func (i UnpackInfo) IsDirectory() bool {
+func (i *UnpackInfo) IsDirectory() bool {
 	return i.Typeflag == tar.TypeDir
 }
 
 // IsTypeX describes whether the file being unpacked is a special TypeXHeader that can
 // be ignored by go-slug
-func (i UnpackInfo) IsTypeX() bool {
+func (i *UnpackInfo) IsTypeX() bool {
 	return i.Typeflag == tar.TypeXGlobalHeader || i.Typeflag == tar.TypeXHeader
 }
 
 // IsRegular describes whether the file being unpacked is a regular file
-func (i UnpackInfo) IsRegular() bool {
+func (i *UnpackInfo) IsRegular() bool {
 	return i.Typeflag == tar.TypeReg || i.Typeflag == tar.TypeRegA
+}
+
+func (i *UnpackInfo) NormalizeMode() error {
+	mode, err := NewFileMode(i.OriginalMode)
+	if err != nil {
+		return fmt.Errorf("failed normalizing file permission: %w", err)
+	}
+	i.NormalizedMode = mode
+	return nil
 }
 
 // RestoreInfo changes the file mode and timestamps for the given UnpackInfo data
@@ -127,7 +139,12 @@ func (i UnpackInfo) RestoreInfo() error {
 }
 
 func (i UnpackInfo) restoreDirectory() error {
-	if err := os.Chmod(i.Path, i.OriginalMode); err != nil && !os.IsNotExist(err) {
+	mode, err := i.FileMode()
+	if err != nil {
+		return fmt.Errorf("failed restoring permissions: %w", err)
+	}
+
+	if err := os.Chmod(i.Path, mode); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
 	}
 
@@ -145,7 +162,12 @@ func (i UnpackInfo) restoreSymlink() error {
 }
 
 func (i UnpackInfo) restoreNormal() error {
-	if err := os.Chmod(i.Path, i.OriginalMode); err != nil {
+	mode, err := i.FileMode()
+	if err != nil {
+		return fmt.Errorf("failed restoring file mode: %w", err)
+	}
+
+	if err := os.Chmod(i.Path, mode); err != nil {
 		return fmt.Errorf("failed setting permissions on %q: %w", i.Path, err)
 	}
 
@@ -153,4 +175,17 @@ func (i UnpackInfo) restoreNormal() error {
 		return fmt.Errorf("failed setting times on %q: %w", i.Path, err)
 	}
 	return nil
+}
+
+func (i UnpackInfo) FileMode() (fs.FileMode, error) {
+	var err error
+	mode := i.OriginalMode
+
+	if i.NormalizedMode != Empty {
+		mode, err = i.NormalizedMode.ToOSFileMode()
+		if err != nil {
+			return fs.FileMode(0), err
+		}
+	}
+	return mode, nil
 }

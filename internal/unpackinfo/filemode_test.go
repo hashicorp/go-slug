@@ -52,7 +52,7 @@ func TestFileMode_New(t *testing.T) {
 		{os.FileMode(0550), Executable},
 		{os.FileMode(0777) | os.ModeSymlink, Symlink},
 	} {
-		m, err := New(c.mode)
+		m, err := NewFileMode(c.mode)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -75,7 +75,7 @@ func TestFileMode_NewWithErrors(t *testing.T) {
 		// sockets are ignored
 		{os.FileMode(0644) | os.ModeSocket, Empty, "invalid file mode"},
 	} {
-		m, err := New(c.mode)
+		m, err := NewFileMode(c.mode)
 		if err == nil {
 			t.Fatalf("expected an error, got nil")
 		}

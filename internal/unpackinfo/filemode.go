@@ -20,7 +20,7 @@ const (
 	Symlink FileMode = 0120000
 )
 
-func New(mode os.FileMode) (FileMode, error) {
+func NewFileMode(mode os.FileMode) (FileMode, error) {
 	if mode.IsRegular() {
 		// disallow pipes, I/O, temporary files etc
 		if isCharDevice(mode) || isTemporary(mode) {
