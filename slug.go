@@ -83,11 +83,25 @@ func AllowSymlinkTarget(path string) PackerOption {
 	}
 }
 
+// NormalizeUnpackFileModes normalizes each file's mode when unpacking
+// a slug's contents. The modes are normalized as follows:
+// - Regular, non-executable files: 0644
+// - Regular, executable files: 0755
+// - Directories: 040777
+// - Symlinks: 0120777
+func NormalizeUnpackFileModes() PackerOption {
+	return func(p *Packer) error {
+		p.normalizeUnpackFileModes = true
+		return nil
+	}
+}
+
 // Packer holds options for the Pack function.
 type Packer struct {
-	dereference          bool
-	applyTerraformIgnore bool
-	allowSymlinkTargets  []string
+	dereference              bool
+	applyTerraformIgnore     bool
+	allowSymlinkTargets      []string
+	normalizeUnpackFileModes bool
 }
 
 // NewPacker is a constructor for Packer.
@@ -383,7 +397,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 	// comparison, see
 	// https://www.gnu.org/software/tar/manual/html_node/Directory-Modification-Times-and-Permissions.html
 	// for more details about how tar attempts to preserve file metadata.
-	directoriesExtracted := []unpackinfo.UnpackInfo{}
+	directoriesExtracted := []*unpackinfo.UnpackInfo{}
 
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
@@ -412,6 +426,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 		info, err := unpackinfo.NewUnpackInfo(dst, header)
 		if err != nil {
 			return &IllegalSlugError{Err: err}
+		}
+
+		if p.normalizeUnpackFileModes {
+			err = info.NormalizeMode()
+			if err != nil {
+				return fmt.Errorf("failed normalizing mode: %w", err)
+			}
 		}
 
 		// Make the directories to the path.

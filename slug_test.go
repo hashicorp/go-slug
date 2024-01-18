@@ -616,6 +616,30 @@ func TestUnpack_HeaderOrdering(t *testing.T) {
 	}
 }
 
+func TestUnpack_withNormalizedFileModes(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+	p, err := NewPacker(NormalizeUnpackFileModes(), DereferenceSymlinks())
+	if err != nil {
+		t.Fatalf("failed initializing packer: %v", err)
+	}
+
+	if _, err := p.Pack("testdata/archive-dir-no-external", slug); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Create a dir to unpack into.
+	dst := t.TempDir()
+	if err := p.Unpack(slug, dst); err != nil {
+		t.Fatalf("unexpected error unpacking: %v", err)
+	}
+
+	// Verify all the files
+	verifyFile(t, filepath.Join(dst, "bar.txt"), fs.FileMode(0644), "bar\n")
+	verifyFile(t, filepath.Join(dst, "sub/bar.txt"), os.ModeSymlink, "../bar.txt")
+	verifyFile(t, filepath.Join(dst, "sub/zip.txt"), fs.FileMode(0644), "zip\n")
+	verifyFile(t, filepath.Join(dst, "exe"), fs.FileMode(0755), "")
+}
+
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	dir, err := ioutil.TempDir("", "slug")
 	if err != nil {
@@ -1331,7 +1355,10 @@ func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarg
 		}
 	}
 
-	if !((expectedMode == 0 && info.Mode().IsRegular()) || info.Mode()&expectedMode == 0) {
+	// Optional Check: If expectedMode is non-zero we know of the file's
+	// mode ahead of time. Use zero when using a fixture
+	// or not normalizing file modes
+	if expectedMode != 0 && info.Mode()&expectedMode == 0 {
 		t.Fatalf("wrong file mode for %q", dst)
 	}
 
