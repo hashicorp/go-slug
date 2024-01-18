@@ -2,7 +2,7 @@ package unpackinfo
 
 import (
 	"fmt"
-	"os"
+	"io/fs"
 	"strings"
 	"testing"
 )
@@ -13,7 +13,7 @@ func assertFileMode(t *testing.T, expected FileMode, got FileMode) {
 	}
 }
 
-func assertOSFileMode(t *testing.T, expected os.FileMode, got os.FileMode) {
+func assertFsFileMode(t *testing.T, expected fs.FileMode, got fs.FileMode) {
 	if expected != got {
 		t.Fatalf("expected OS filemode: %s, got: %s", expected, got)
 	}
@@ -21,36 +21,36 @@ func assertOSFileMode(t *testing.T, expected os.FileMode, got os.FileMode) {
 
 func TestFileMode_New(t *testing.T) {
 	for _, c := range []struct {
-		mode     os.FileMode
+		mode     fs.FileMode
 		expected FileMode
 	}{
-		{os.FileMode(0755) | os.ModeDir, Dir},
-		{os.FileMode(0700) | os.ModeDir, Dir},
-		{os.FileMode(0500) | os.ModeDir, Dir},
+		{fs.FileMode(0755) | fs.ModeDir, Dir},
+		{fs.FileMode(0700) | fs.ModeDir, Dir},
+		{fs.FileMode(0500) | fs.ModeDir, Dir},
 		// dirs with a sticky bit are just dirs
-		{os.FileMode(0755) | os.ModeDir | os.ModeSticky, Dir},
-		{os.FileMode(0644), Regular},
+		{fs.FileMode(0755) | fs.ModeDir | fs.ModeSticky, Dir},
+		{fs.FileMode(0644), Regular},
 		// append only files are regular
-		{os.FileMode(0644) | os.ModeAppend, Regular},
+		{fs.FileMode(0644) | fs.ModeAppend, Regular},
 		// exclusive only files are regular
-		{os.FileMode(0644) | os.ModeExclusive, Regular},
+		{fs.FileMode(0644) | fs.ModeExclusive, Regular},
 		// depending on owner perms, setguid can be regular
-		{os.FileMode(0644) | os.ModeSetgid, Regular},
-		{os.FileMode(0660), Regular},
-		{os.FileMode(0640), Regular},
-		{os.FileMode(0600), Regular},
-		{os.FileMode(0400), Regular},
-		{os.FileMode(0000), Regular},
-		{os.FileMode(0755), Executable},
+		{fs.FileMode(0644) | fs.ModeSetgid, Regular},
+		{fs.FileMode(0660), Regular},
+		{fs.FileMode(0640), Regular},
+		{fs.FileMode(0600), Regular},
+		{fs.FileMode(0400), Regular},
+		{fs.FileMode(0000), Regular},
+		{fs.FileMode(0755), Executable},
 		// setuid and setguid are executables
-		{os.FileMode(0755) | os.ModeSetuid, Executable},
-		{os.FileMode(0755) | os.ModeSetgid, Executable},
-		{os.FileMode(0700), Executable},
-		{os.FileMode(0500), Executable},
-		{os.FileMode(0744), Executable},
-		{os.FileMode(0540), Executable},
-		{os.FileMode(0550), Executable},
-		{os.FileMode(0777) | os.ModeSymlink, Symlink},
+		{fs.FileMode(0755) | fs.ModeSetuid, Executable},
+		{fs.FileMode(0755) | fs.ModeSetgid, Executable},
+		{fs.FileMode(0700), Executable},
+		{fs.FileMode(0500), Executable},
+		{fs.FileMode(0744), Executable},
+		{fs.FileMode(0540), Executable},
+		{fs.FileMode(0550), Executable},
+		{fs.FileMode(0777) | fs.ModeSymlink, Symlink},
 	} {
 		m, err := NewFileMode(c.mode)
 		if err != nil {
@@ -62,18 +62,18 @@ func TestFileMode_New(t *testing.T) {
 
 func TestFileMode_NewWithErrors(t *testing.T) {
 	for _, c := range []struct {
-		mode        os.FileMode
+		mode        fs.FileMode
 		expected    FileMode
 		expectedErr string
 	}{
 		// temporary files are ignored
-		{os.FileMode(0644) | os.ModeTemporary, Empty, "invalid file mode"},
+		{fs.FileMode(0644) | fs.ModeTemporary, Empty, "invalid file mode"},
 		// device files are ignored
-		{os.FileMode(0644) | os.ModeCharDevice, Empty, "invalid file mode"},
+		{fs.FileMode(0644) | fs.ModeCharDevice, Empty, "invalid file mode"},
 		// named pipes are ignored
-		{os.FileMode(0644) | os.ModeNamedPipe, Empty, "invalid file mode"},
+		{fs.FileMode(0644) | fs.ModeNamedPipe, Empty, "invalid file mode"},
 		// sockets are ignored
-		{os.FileMode(0644) | os.ModeSocket, Empty, "invalid file mode"},
+		{fs.FileMode(0644) | fs.ModeSocket, Empty, "invalid file mode"},
 	} {
 		m, err := NewFileMode(c.mode)
 		if err == nil {
@@ -92,18 +92,18 @@ func TestFileMode_NewWithErrors(t *testing.T) {
 func TestFileMode_ToOSFileMode(t *testing.T) {
 	for _, c := range []struct {
 		mode     FileMode
-		expected os.FileMode
+		expected fs.FileMode
 	}{
-		{Regular, os.FileMode(0644)},
-		{Dir, os.ModePerm | os.ModeDir},
-		{Symlink, os.ModePerm | os.ModeSymlink},
-		{Executable, os.FileMode(0755)},
+		{Regular, fs.FileMode(0644)},
+		{Dir, fs.ModePerm | fs.ModeDir},
+		{Symlink, fs.ModePerm | fs.ModeSymlink},
+		{Executable, fs.FileMode(0755)},
 	} {
-		m, err := c.mode.ToOSFileMode()
+		m, err := c.mode.ToFsFileMode()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assertOSFileMode(t, c.expected, m)
+		assertFsFileMode(t, c.expected, m)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestFileMode_ToOSFileModeWithErrors(t *testing.T) {
 		FileMode(010000),
 		FileMode(0100000),
 	} {
-		m, err := mode.ToOSFileMode()
+		m, err := mode.ToFsFileMode()
 		if err == nil {
 			t.Fatalf("expected an error, got nil")
 		}
@@ -128,7 +128,7 @@ func TestFileMode_ToOSFileModeWithErrors(t *testing.T) {
 			t.Fatalf("expected error: %s, got: %s", expectedErr, gotErr)
 		}
 
-		if m != os.FileMode(0) {
+		if m != fs.FileMode(0) {
 			t.Fatalf("expected file mode 0, got: %s", m)
 		}
 	}

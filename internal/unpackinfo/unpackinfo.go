@@ -182,7 +182,7 @@ func (i UnpackInfo) FileMode() (fs.FileMode, error) {
 	mode := i.OriginalMode
 
 	if i.NormalizedMode != Empty {
-		mode, err = i.NormalizedMode.ToOSFileMode()
+		mode, err = i.NormalizedMode.ToFsFileMode()
 		if err != nil {
 			return fs.FileMode(0), err
 		}

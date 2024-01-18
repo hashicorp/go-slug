@@ -2,6 +2,7 @@ package unpackinfo
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 )
 
@@ -20,7 +21,7 @@ const (
 	Symlink FileMode = 0120000
 )
 
-func NewFileMode(mode os.FileMode) (FileMode, error) {
+func NewFileMode(mode fs.FileMode) (FileMode, error) {
 	if mode.IsRegular() {
 		// disallow pipes, I/O, temporary files etc
 		if isCharDevice(mode) || isTemporary(mode) {
@@ -45,21 +46,21 @@ func NewFileMode(mode os.FileMode) (FileMode, error) {
 	return Empty, fmt.Errorf("invalid file mode: %s", mode)
 }
 
-// Maps a FileMode integer to an os.FileMode type, normalizing
+// Maps a FileMode integer to an fs.FileMode type, normalizing
 // permissions for regular and executable files.
-func (m FileMode) ToOSFileMode() (os.FileMode, error) {
+func (m FileMode) ToFsFileMode() (fs.FileMode, error) {
 	switch m {
 	case Regular:
-		return os.FileMode(0644), nil
+		return fs.FileMode(0644), nil
 	case Dir:
-		return os.ModePerm | os.ModeDir, nil
+		return fs.ModePerm | fs.ModeDir, nil
 	case Executable:
-		return os.FileMode(0755), nil
+		return fs.FileMode(0755), nil
 	case Symlink:
-		return os.ModePerm | os.ModeSymlink, nil
+		return fs.ModePerm | fs.ModeSymlink, nil
 	}
 
-	return os.FileMode(0), fmt.Errorf("malformed file mode: %s", m)
+	return fs.FileMode(0), fmt.Errorf("malformed file mode: %s", m)
 }
 
 func (m FileMode) IsRegular() bool {
@@ -76,18 +77,18 @@ func (m FileMode) String() string {
 	return fmt.Sprintf("%07o", uint32(m))
 }
 
-func isCharDevice(m os.FileMode) bool {
+func isCharDevice(m fs.FileMode) bool {
 	return m&os.ModeCharDevice != 0
 }
 
-func isExecutable(m os.FileMode) bool {
+func isExecutable(m fs.FileMode) bool {
 	return m&0100 != 0
 }
 
-func isSymlink(m os.FileMode) bool {
-	return m&os.ModeSymlink != 0
+func isSymlink(m fs.FileMode) bool {
+	return m&fs.ModeSymlink != 0
 }
 
-func isTemporary(m os.FileMode) bool {
-	return m&os.ModeTemporary != 0
+func isTemporary(m fs.FileMode) bool {
+	return m&fs.ModeTemporary != 0
 }
