@@ -114,7 +114,7 @@ func (i *UnpackInfo) IsRegular() bool {
 	return i.Typeflag == tar.TypeReg || i.Typeflag == tar.TypeRegA
 }
 
-func (i *UnpackInfo) NormalizeMode() error {
+func (i *UnpackInfo) SetNormalizedMode() error {
 	mode, err := NewFileMode(i.OriginalMode)
 	if err != nil {
 		return fmt.Errorf("failed normalizing file permission: %w", err)

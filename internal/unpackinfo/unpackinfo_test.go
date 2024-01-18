@@ -100,7 +100,7 @@ func TestUnpackInfo_RestoreInfo(t *testing.T) {
 func TestUnpackInfo_normalizedFileModes(t *testing.T) {
 	cases := testUnpackInfoCases(t)
 	for _, info := range cases {
-		err := info.NormalizeMode()
+		err := info.SetNormalizedMode()
 		if err != nil {
 			t.Fatalf("failed normalizing permissions for %s: %s", info.Path, err)
 		}

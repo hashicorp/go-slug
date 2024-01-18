@@ -429,7 +429,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 		}
 
 		if p.normalizeUnpackFileModes {
-			err = info.NormalizeMode()
+			err = info.SetNormalizedMode()
 			if err != nil {
 				return fmt.Errorf("failed normalizing mode: %w", err)
 			}
