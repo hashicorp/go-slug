@@ -12,9 +12,9 @@ const (
 	Empty FileMode = 0
 	// Dir represent a Directory.
 	Dir FileMode = 0040000
-	// Regular represent non-executable files.  Please note this is not
+	// Plain represent non-executable, text files.  Please note this is not
 	// the same as golang regular files, which include executable files.
-	Regular FileMode = 0100644
+	Plain FileMode = 0100644
 	// Executable represents executable files.
 	Executable FileMode = 0100755
 	// Symlink represents symbolic links to files.
@@ -32,7 +32,7 @@ func NewFileMode(mode fs.FileMode) (FileMode, error) {
 			return Executable, nil
 		}
 
-		return Regular, nil
+		return Plain, nil
 	}
 
 	if mode.IsDir() {
@@ -50,7 +50,7 @@ func NewFileMode(mode fs.FileMode) (FileMode, error) {
 // permissions for regular and executable files.
 func (m FileMode) ToFsFileMode() (fs.FileMode, error) {
 	switch m {
-	case Regular:
+	case Plain:
 		return fs.FileMode(0644), nil
 	case Dir:
 		return fs.ModePerm | fs.ModeDir, nil
@@ -63,12 +63,12 @@ func (m FileMode) ToFsFileMode() (fs.FileMode, error) {
 	return fs.FileMode(0), fmt.Errorf("malformed file mode: %s", m)
 }
 
-func (m FileMode) IsRegular() bool {
-	return m == Regular
+func (m FileMode) IsPlain() bool {
+	return m == Plain
 }
 
 func (m FileMode) IsFile() bool {
-	return m == Regular ||
+	return m == Plain ||
 		m == Executable ||
 		m == Symlink
 }

@@ -29,18 +29,18 @@ func TestFileMode_New(t *testing.T) {
 		{fs.FileMode(0500) | fs.ModeDir, Dir},
 		// dirs with a sticky bit are just dirs
 		{fs.FileMode(0755) | fs.ModeDir | fs.ModeSticky, Dir},
-		{fs.FileMode(0644), Regular},
+		{fs.FileMode(0644), Plain},
 		// append only files are regular
-		{fs.FileMode(0644) | fs.ModeAppend, Regular},
+		{fs.FileMode(0644) | fs.ModeAppend, Plain},
 		// exclusive only files are regular
-		{fs.FileMode(0644) | fs.ModeExclusive, Regular},
+		{fs.FileMode(0644) | fs.ModeExclusive, Plain},
 		// depending on owner perms, setguid can be regular
-		{fs.FileMode(0644) | fs.ModeSetgid, Regular},
-		{fs.FileMode(0660), Regular},
-		{fs.FileMode(0640), Regular},
-		{fs.FileMode(0600), Regular},
-		{fs.FileMode(0400), Regular},
-		{fs.FileMode(0000), Regular},
+		{fs.FileMode(0644) | fs.ModeSetgid, Plain},
+		{fs.FileMode(0660), Plain},
+		{fs.FileMode(0640), Plain},
+		{fs.FileMode(0600), Plain},
+		{fs.FileMode(0400), Plain},
+		{fs.FileMode(0000), Plain},
 		{fs.FileMode(0755), Executable},
 		// setuid and setguid are executables
 		{fs.FileMode(0755) | fs.ModeSetuid, Executable},
@@ -94,7 +94,7 @@ func TestFileMode_ToOSFileMode(t *testing.T) {
 		mode     FileMode
 		expected fs.FileMode
 	}{
-		{Regular, fs.FileMode(0644)},
+		{Plain, fs.FileMode(0644)},
 		{Dir, fs.ModePerm | fs.ModeDir},
 		{Symlink, fs.ModePerm | fs.ModeSymlink},
 		{Executable, fs.FileMode(0755)},

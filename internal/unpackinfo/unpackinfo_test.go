@@ -115,7 +115,7 @@ func TestUnpackInfo_normalizedFileModes(t *testing.T) {
 
 		var expectedMode fs.FileMode
 		switch info.NormalizedMode {
-		case Regular:
+		case Plain:
 			expectedMode = fs.FileMode(0644)
 		case Dir:
 			expectedMode = os.ModePerm | os.ModeDir
