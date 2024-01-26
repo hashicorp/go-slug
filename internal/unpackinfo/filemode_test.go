@@ -95,7 +95,7 @@ func TestFileMode_ToOSFileMode(t *testing.T) {
 		expected fs.FileMode
 	}{
 		{Plain, fs.FileMode(0644)},
-		{Dir, fs.ModePerm | fs.ModeDir},
+		{Dir, fs.FileMode(0755) | fs.ModeDir},
 		{Symlink, fs.ModePerm | fs.ModeSymlink},
 		{Executable, fs.FileMode(0755)},
 	} {

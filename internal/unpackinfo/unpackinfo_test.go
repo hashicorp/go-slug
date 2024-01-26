@@ -5,7 +5,6 @@ package unpackinfo
 
 import (
 	"archive/tar"
-	"io/fs"
 	"os"
 	"path"
 	"strings"
@@ -113,17 +112,14 @@ func TestUnpackInfo_normalizedFileModes(t *testing.T) {
 			t.Fatalf("failed to lstat %q: %s", info.Path, err)
 		}
 
-		var expectedMode fs.FileMode
-		switch info.NormalizedMode {
-		case Plain:
-			expectedMode = fs.FileMode(0644)
-		case Dir:
-			expectedMode = os.ModePerm | os.ModeDir
-		case Executable:
-			expectedMode = fs.FileMode(0755)
-		case Symlink:
-			// ignore symlinks
+		// ignore symlinks
+		if info.NormalizedMode == Symlink {
 			continue
+		}
+
+		expectedMode, err := info.FileMode()
+		if err != nil {
+			t.Fatalf("failed to read normalized file mode %s: %s", info.Path, err)
 		}
 
 		if stat.Mode() != expectedMode {

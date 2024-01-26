@@ -53,7 +53,7 @@ func (m FileMode) ToFsFileMode() (fs.FileMode, error) {
 	case Plain:
 		return fs.FileMode(0644), nil
 	case Dir:
-		return fs.ModePerm | fs.ModeDir, nil
+		return fs.FileMode(0755) | fs.ModeDir, nil
 	case Executable:
 		return fs.FileMode(0755), nil
 	case Symlink:
