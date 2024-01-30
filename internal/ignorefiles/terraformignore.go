@@ -58,7 +58,6 @@ func readRules(input io.Reader) ([]rule, error) {
 			pattern = "**" + string(os.PathSeparator) + pattern
 		}
 		rule.val = pattern
-		rule.dirs = strings.Split(pattern, string(os.PathSeparator))
 		rules = append(rules, rule)
 		currentRuleIndex += 1
 	}
@@ -73,7 +72,6 @@ type rule struct {
 	val            string         // the value of the rule itself
 	negated        bool           // prefixed by !, a negated rule
 	negationsAfter bool           // negatied rules appear after this rule
-	dirs           []string       // directories of the rule
 	regex          *regexp.Regexp // regular expression to match for the rule
 }
 
@@ -173,12 +171,14 @@ func (r *rule) compile() error {
 
 var defaultExclusions = []rule{
 	{
-		val:     strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
-		negated: false,
+		val:            strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
+		negated:        false,
+		negationsAfter: true,
 	},
 	{
-		val:     strings.Join([]string{"**", ".terraform", "**"}, string(os.PathSeparator)),
-		negated: false,
+		val:            strings.Join([]string{"**", ".terraform", "**"}, string(os.PathSeparator)),
+		negated:        false,
+		negationsAfter: true,
 	},
 	{
 		val:     strings.Join([]string{"**", ".terraform", "modules", "**"}, string(os.PathSeparator)),

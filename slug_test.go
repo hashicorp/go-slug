@@ -33,6 +33,39 @@ func TestPack(t *testing.T) {
 	assertArchiveFixture(t, slug, meta)
 }
 
+func TestPack_defaultRulesOnly(t *testing.T) {
+	slug := bytes.NewBuffer(nil)
+	meta, err := Pack("testdata/archive-dir-defaults-only", slug, true)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Make sure .terraform/modules/** are included.
+	subModuleDir := false
+
+	// Make sure .terraform/plugins are excluded.
+	pluginsDir := false
+
+	for _, file := range meta.Files {
+		if strings.HasPrefix(file, filepath.Clean(".terraform/modules/subdir/README")) {
+			subModuleDir = true
+			continue
+		}
+
+		if strings.HasPrefix(file, filepath.Clean(".terraform/plugins/")) {
+			pluginsDir = true
+			continue
+		}
+	}
+	if !subModuleDir {
+		t.Fatal("expected to include .terraform/modules/subdir/README")
+	}
+
+	if pluginsDir {
+		t.Fatal("expected to exclude .terraform/plugins")
+	}
+}
+
 func TestPack_rootIsSymlink(t *testing.T) {
 	for _, path := range []string{
 		"testdata/archive-dir",
