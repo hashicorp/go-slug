@@ -171,18 +171,20 @@ func (r *rule) compile() error {
 
 var defaultExclusions = []rule{
 	{
-		val:            strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
-		negated:        false,
-		negationsAfter: true,
-	},
-	{
 		val:            strings.Join([]string{"**", ".terraform", "**"}, string(os.PathSeparator)),
 		negated:        false,
 		negationsAfter: true,
 	},
+	// Place negation rules as high as possible in the list
 	{
-		val:     strings.Join([]string{"**", ".terraform", "modules", "**"}, string(os.PathSeparator)),
-		negated: true,
+		val:            strings.Join([]string{"**", ".terraform", "modules", "**"}, string(os.PathSeparator)),
+		negated:        true,
+		negationsAfter: false,
+	},
+	{
+		val:            strings.Join([]string{"**", ".git", "**"}, string(os.PathSeparator)),
+		negated:        false,
+		negationsAfter: false,
 	},
 }
 
