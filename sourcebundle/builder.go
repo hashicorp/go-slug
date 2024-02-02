@@ -353,13 +353,14 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 			reqCtx = ctx
 		}
 
-		vs, err := b.registryClient.ModulePackageVersions(reqCtx, pkgAddr)
+		resp, err := b.registryClient.ModulePackageVersions(reqCtx, pkgAddr)
 		if err != nil {
 			if cb := trace.RegistryPackageVersionsFailure; cb != nil {
 				cb(reqCtx, pkgAddr, err)
 			}
 			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to query available versions for %s: %w", pkgAddr, err)
 		}
+		vs := resp.Versions
 		vs.Sort()
 		availableVersions = vs
 		b.registryPackageVersions[pkgAddr] = availableVersions
@@ -391,14 +392,14 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 			reqCtx = ctx
 		}
 
-		sa, err := b.registryClient.ModulePackageSourceAddr(reqCtx, pkgAddr, selectedVersion)
+		resp, err := b.registryClient.ModulePackageSourceAddr(reqCtx, pkgAddr, selectedVersion)
 		if err != nil {
 			if cb := trace.RegistryPackageSourceFailure; cb != nil {
 				cb(reqCtx, pkgAddr, selectedVersion, err)
 			}
 			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to find real source address for %s %s: %w", pkgAddr, selectedVersion, err)
 		}
-		realSourceAddr = sa
+		realSourceAddr = resp.SourceAddr
 		b.resolvedRegistry[pkgVer] = realSourceAddr
 		if cb := trace.RegistryPackageSourceSuccess; cb != nil {
 			cb(reqCtx, pkgAddr, selectedVersion, realSourceAddr)
@@ -459,13 +460,13 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 		return "", fmt.Errorf("failed to create new package directory: %w", err)
 	}
 
-	meta, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), workDir)
+	response, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), workDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch package: %w", err)
 	}
-	if meta != nil {
+	if response.PackageMeta != nil {
 		// We'll remember the meta so we can use it when building a manifest later.
-		b.remotePackageMeta[pkgAddr] = meta
+		b.remotePackageMeta[pkgAddr] = response.PackageMeta
 	}
 
 	// If the package has a .terraformignore file then we now need to remove

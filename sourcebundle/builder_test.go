@@ -593,7 +593,8 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 		registryPkgs = append(registryPkgs, pkg)
 	}
 
-	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (*PackageMeta, error) {
+	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
+		var ret FetchSourcePackageResponse
 		// Our fake implementation of "fetching" is to just copy one local
 		// directory into another.
 		for _, pkg := range remotePkgs {
@@ -606,39 +607,42 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 			localDir := pkg.localDir
 			err := copyDir(targetDir, localDir)
 			if err != nil {
-				return nil, fmt.Errorf("copying %s to %s: %w", localDir, targetDir, err)
+				return ret, fmt.Errorf("copying %s to %s: %w", localDir, targetDir, err)
 			}
-			return nil, nil
+			return ret, nil
 		}
-		return nil, fmt.Errorf("no fake remote package matches %s %s", sourceType, url)
+		return ret, fmt.Errorf("no fake remote package matches %s %s", sourceType, url)
 	})
 
 	registryClient := registryClientFuncs{
-		modulePackageVersions: func(ctx context.Context, pkgAddr regaddr.ModulePackage) (versions.List, error) {
+		modulePackageVersions: func(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error) {
+			var ret ModulePackageVersionsResponse
 			for _, pkg := range registryPkgs {
 				if pkg.pkgAddr != pkgAddr {
 					continue
 				}
-				ret := make(versions.List, len(pkg.versions))
+				ret.Versions = make(versions.List, len(pkg.versions))
 				for version := range pkg.versions {
-					ret = append(ret, version)
+					ret.Versions = append(ret.Versions, version)
 				}
 				return ret, nil
 			}
-			return nil, fmt.Errorf("no fake registry package matches %s", pkgAddr)
+			return ret, fmt.Errorf("no fake registry package matches %s", pkgAddr)
 		},
-		modulePackageSourceAddr: func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (sourceaddrs.RemoteSource, error) {
+		modulePackageSourceAddr: func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error) {
+			var ret ModulePackageSourceAddrResponse
 			for _, pkg := range registryPkgs {
 				if pkg.pkgAddr != pkgAddr {
 					continue
 				}
 				sourceAddr, ok := pkg.versions[version]
 				if !ok {
-					return sourceaddrs.RemoteSource{}, fmt.Errorf("no fake registry package matches %s %s", pkgAddr, version)
+					return ret, fmt.Errorf("no fake registry package matches %s %s", pkgAddr, version)
 				}
-				return sourceAddr, nil
+				ret.SourceAddr = sourceAddr
+				return ret, nil
 			}
-			return sourceaddrs.RemoteSource{}, fmt.Errorf("no fake registry package matches %s", pkgAddr)
+			return ret, fmt.Errorf("no fake registry package matches %s", pkgAddr)
 		},
 	}
 
@@ -719,22 +723,22 @@ func (t *testBuildTracer) appendLogf(f string, v ...interface{}) {
 	t.log = append(t.log, fmt.Sprintf(f, v...))
 }
 
-type packageFetcherFunc func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (*PackageMeta, error)
+type packageFetcherFunc func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error)
 
-func (f packageFetcherFunc) FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (*PackageMeta, error) {
+func (f packageFetcherFunc) FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
 	return f(ctx, sourceType, url, targetDir)
 }
 
 type registryClientFuncs struct {
-	modulePackageVersions   func(ctx context.Context, pkgAddr regaddr.ModulePackage) (versions.List, error)
-	modulePackageSourceAddr func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (sourceaddrs.RemoteSource, error)
+	modulePackageVersions   func(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error)
+	modulePackageSourceAddr func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error)
 }
 
-func (f registryClientFuncs) ModulePackageVersions(ctx context.Context, pkgAddr regaddr.ModulePackage) (versions.List, error) {
+func (f registryClientFuncs) ModulePackageVersions(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error) {
 	return f.modulePackageVersions(ctx, pkgAddr)
 }
 
-func (f registryClientFuncs) ModulePackageSourceAddr(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (sourceaddrs.RemoteSource, error) {
+func (f registryClientFuncs) ModulePackageSourceAddr(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error) {
 	return f.modulePackageSourceAddr(ctx, pkgAddr, version)
 }
 
