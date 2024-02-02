@@ -10,7 +10,6 @@ import (
 
 // A PackageFetcher knows how to fetch remote source packages into a local
 // filesystem directory.
-//
 type PackageFetcher interface {
 	// FetchSourcePackage retrieves the a source package from the given
 	// location and extracts it into the given local filesystem directory.
@@ -35,5 +34,12 @@ type PackageFetcher interface {
 	// because it's [Builder]'s responsibility to handle caching and request
 	// coalescing during bundle construction to ensure that it will happen
 	// consistently across different fetcher implementations.
-	FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (*PackageMeta, error)
+	FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error)
+}
+
+// FetchSourcePackageResponse is a structure which represents metadata about
+// the fetch operation. This type may grow to add more data over time in later
+// minor releases.
+type FetchSourcePackageResponse struct {
+	PackageMeta *PackageMeta
 }
