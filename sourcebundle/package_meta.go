@@ -16,18 +16,19 @@ type PackageMeta struct {
 	// this struct ends up getting too big and is only sparsely used by most
 	// fetchers.
 
-	gitCommitID string
+	GitCommitID      string
+	GitCommitMessage string
 }
 
 // PackageMetaWithGitCommit returns a [PackageMeta] object with a Git Commit
 // ID tracked. The given commit ID must be a fully-qualified ID, and never an
 // abbreviated commit ID, the name of a ref, or anything other proxy-for-commit
 // identifier.
-func PackageMetaWithGitCommit(commitID string) *PackageMeta {
-	return &PackageMeta{
-		gitCommitID: commitID,
-	}
-}
+//func PackageMetaWithGitCommit(commitID string) *PackageMeta {
+//	return &PackageMeta{
+//		gitCommitID: commitID,
+//	}
+//}
 
 // If the content of this package was derived from a particular commit
 // from a Git repository, GitCommitID returns the fully-qualified ID of
@@ -35,6 +36,6 @@ func PackageMetaWithGitCommit(commitID string) *PackageMeta {
 // or anything else that could serve as a proxy for a commit ID.
 //
 // If there is no relevant commit ID for this package, returns an empty string.
-func (m *PackageMeta) GitCommitID() string {
-	return m.gitCommitID
-}
+//func (m *PackageMeta) GitCommitID() string {
+//	return m.gitCommitID
+//}
