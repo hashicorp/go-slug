@@ -561,11 +561,11 @@ func (b *Builder) writeManifest(filename string) error {
 			LocalDir:   localDirName,
 		}
 		if pkgMeta != nil {
-			if pkgMeta.GitCommitID != "" {
-				manifestPkg.Meta.GitCommitID = pkgMeta.GitCommitID
+			if pkgMeta.gitCommitID != "" {
+				manifestPkg.Meta.GitCommitID = pkgMeta.gitCommitID
 			}
-			if pkgMeta.GitCommitMessage != "" {
-				manifestPkg.Meta.GitCommitMessage = pkgMeta.GitCommitMessage
+			if pkgMeta.gitCommitMessage != "" {
+				manifestPkg.Meta.GitCommitMessage = pkgMeta.gitCommitMessage
 			}
 		}
 

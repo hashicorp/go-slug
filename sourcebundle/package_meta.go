@@ -16,26 +16,37 @@ type PackageMeta struct {
 	// this struct ends up getting too big and is only sparsely used by most
 	// fetchers.
 
-	GitCommitID      string
-	GitCommitMessage string
+	gitCommitID      string
+	gitCommitMessage string
 }
 
-// PackageMetaWithGitCommit returns a [PackageMeta] object with a Git Commit
-// ID tracked. The given commit ID must be a fully-qualified ID, and never an
+// PackageMetaWithGitMetadata returns a [PackageMeta] object with a Git Commit
+// ID and message tracked.
+//
+// The given commit ID must be a fully-qualified ID, and never an
 // abbreviated commit ID, the name of a ref, or anything other proxy-for-commit
 // identifier.
-//func PackageMetaWithGitCommit(commitID string) *PackageMeta {
-//	return &PackageMeta{
-//		gitCommitID: commitID,
-//	}
-//}
+func PackageMetaWithGitMetadata(
+	commitID string,
+	commitMessage string,
+) *PackageMeta {
+	return &PackageMeta{
+		gitCommitID: commitID,
+	}
+}
 
 // If the content of this package was derived from a particular commit
-// from a Git repository, GitCommitID returns the fully-qualified ID of
+// from a Git repository, gitCommitID returns the fully-qualified ID of
 // that commit. This is never an abbreviated commit ID, the name of a ref,
 // or anything else that could serve as a proxy for a commit ID.
 //
 // If there is no relevant commit ID for this package, returns an empty string.
-//func (m *PackageMeta) GitCommitID() string {
-//	return m.gitCommitID
-//}
+func (m *PackageMeta) GitCommitID() string {
+	return m.gitCommitID
+}
+
+// GitCommitMessage returns a commit message for the commit this package was
+// derived from.
+func (m *PackageMeta) GitCommitMessage() string {
+	return m.gitCommitMessage
+}

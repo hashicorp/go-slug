@@ -92,8 +92,8 @@ func OpenDir(baseDir string) (*Bundle, error) {
 
 		if rpm.Meta.GitCommitID != "" {
 			ret.remotePackageMeta[pkgAddr] = &PackageMeta{
-				GitCommitID:      rpm.Meta.GitCommitID,
-				GitCommitMessage: rpm.Meta.GitCommitMessage,
+				gitCommitID:      rpm.Meta.GitCommitID,
+				gitCommitMessage: rpm.Meta.GitCommitMessage,
 			}
 		}
 	}
