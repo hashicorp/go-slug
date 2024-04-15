@@ -36,7 +36,7 @@ func PackageMetaWithGitMetadata(
 }
 
 // If the content of this package was derived from a particular commit
-// from a Git repository, gitCommitID returns the fully-qualified ID of
+// from a Git repository, GitCommitID returns the fully-qualified ID of
 // that commit. This is never an abbreviated commit ID, the name of a ref,
 // or anything else that could serve as a proxy for a commit ID.
 //
