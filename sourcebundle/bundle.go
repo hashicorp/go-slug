@@ -91,7 +91,10 @@ func OpenDir(baseDir string) (*Bundle, error) {
 		ret.remotePackageDirs[pkgAddr] = localDir
 
 		if rpm.Meta.GitCommitID != "" {
-			ret.remotePackageMeta[pkgAddr] = PackageMetaWithGitCommit(rpm.Meta.GitCommitID)
+			ret.remotePackageMeta[pkgAddr] = PackageMetaWithGitMetadata(
+				rpm.Meta.GitCommitID,
+				rpm.Meta.GitCommitMessage,
+			)
 		}
 	}
 

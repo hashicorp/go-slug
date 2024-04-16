@@ -47,5 +47,6 @@ type manifestRegistryVersion struct {
 }
 
 type manifestPackageMeta struct {
-	GitCommitID string `json:"git_commit_id,omitempty"`
+	GitCommitID      string `json:"git_commit_id,omitempty"`
+	GitCommitMessage string `json:"git_commit_message,omitempty"`
 }

@@ -560,8 +560,13 @@ func (b *Builder) writeManifest(filename string) error {
 			SourceAddr: pkgAddr.String(),
 			LocalDir:   localDirName,
 		}
-		if pkgMeta != nil && pkgMeta.gitCommitID != "" {
-			manifestPkg.Meta.GitCommitID = pkgMeta.gitCommitID
+		if pkgMeta != nil {
+			if pkgMeta.gitCommitID != "" {
+				manifestPkg.Meta.GitCommitID = pkgMeta.gitCommitID
+			}
+			if pkgMeta.gitCommitMessage != "" {
+				manifestPkg.Meta.GitCommitMessage = pkgMeta.gitCommitMessage
+			}
 		}
 
 		root.Packages = append(root.Packages, manifestPkg)
