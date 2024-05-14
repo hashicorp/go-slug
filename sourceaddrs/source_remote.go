@@ -15,6 +15,17 @@ type RemoteSource struct {
 	subPath string
 }
 
+type RemoteSourceInfo struct {
+	RemoteSource       RemoteSource
+	VersionDeprecation *Deprecation
+}
+
+type Deprecation struct {
+	Version string
+	Reason  string
+	Link    string
+}
+
 var _ Source = RemoteSource{}
 var _ FinalSource = RemoteSource{}
 

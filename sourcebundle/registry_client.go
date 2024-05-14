@@ -34,7 +34,17 @@ type RegistryClient interface {
 // of the package versions client operation. This type may grow to add more
 // functionality over time in later minor releases.
 type ModulePackageVersionsResponse struct {
-	Versions versions.List
+	Versions []ModulePackageInfo `json:"versions"`
+}
+
+type ModulePackageInfo struct {
+	Version     versions.Version
+	Deprecation *ModulePackageVersionDeprecation `json:"deprecation"`
+}
+
+type ModulePackageVersionDeprecation struct {
+	Reason string `json:"reason"`
+	Link   string `json:"link"`
 }
 
 // ModulePackageSourceAddrResponse is an opaque type which represents the

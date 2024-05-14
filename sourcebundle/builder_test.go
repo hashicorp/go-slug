@@ -621,9 +621,11 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 				if pkg.pkgAddr != pkgAddr {
 					continue
 				}
-				ret.Versions = make(versions.List, len(pkg.versions))
+				ret.Versions = make([]ModulePackageVersion, len(pkg.versions))
 				for version := range pkg.versions {
-					ret.Versions = append(ret.Versions, version)
+					ret.Versions = append(ret.Versions, ModulePackageVersion{
+						Version: version,
+					})
 				}
 				return ret, nil
 			}
