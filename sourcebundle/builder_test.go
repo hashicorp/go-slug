@@ -44,6 +44,7 @@ func TestBuilderSimple(t *testing.T) {
 				"1.0.0": "https://example.com/foo.tgz",
 			},
 		},
+		nil,
 	)
 
 	realSource := sourceaddrs.MustParseSource("https://example.com/foo.tgz").(sourceaddrs.RemoteSource)
@@ -114,6 +115,7 @@ func TestBuilderSubdirs(t *testing.T) {
 				"1.0.0": "https://example.com/subdirs.tgz//a",
 			},
 		},
+		nil,
 	)
 
 	// NOTE: We're asking for subdir "b" of the registry address. That combines
@@ -182,6 +184,7 @@ func TestBuilderRemoteDeps(t *testing.T) {
 			"https://example.com/dependency1.tgz": "testdata/pkgs/hello",
 			"https://example.com/dependency2.tgz": "testdata/pkgs/terraformignore",
 		},
+		nil,
 		nil,
 	)
 
@@ -269,6 +272,92 @@ func TestBuilderRemoteDeps(t *testing.T) {
 	})
 }
 
+func TestBuilderRegistryVersionDeprecation(t *testing.T) {
+	// This tests the common pattern of specifying a module registry address
+	// to start, having that translated into a real remote source address,
+	// and then downloading from that real source address. There are no
+	// oddities or edge-cases here.
+
+	tracer := testBuildTracer{}
+	ctx := tracer.OnContext(context.Background())
+
+	targetDir := t.TempDir()
+	builder := testingBuilder(
+		t, targetDir,
+		map[string]string{
+			"https://example.com/foo.tgz": "testdata/pkgs/hello",
+		},
+		map[string]map[string]string{
+			"example.com/foo/bar/baz": {
+				"1.0.0": "https://example.com/foo.tgz",
+			},
+		},
+		map[string]map[string]*ModulePackageVersionDeprecation{
+			"example.com/foo/bar/baz": {
+				"1.0.0": &ModulePackageVersionDeprecation{
+					Reason: "test reason",
+					Link:   "test link",
+				},
+			},
+		},
+	)
+
+	realSource := sourceaddrs.MustParseSource("https://example.com/foo.tgz").(sourceaddrs.RemoteSource)
+	regSource := sourceaddrs.MustParseSource("example.com/foo/bar/baz").(sourceaddrs.RegistrySource)
+	diags := builder.AddRegistrySource(ctx, regSource, versions.All, noDependencyFinder)
+	if len(diags) > 0 {
+		t.Fatal("unexpected diagnostics")
+	}
+
+	bundle, err := builder.Close()
+
+	if err != nil {
+		t.Fatalf("failed to close bundle: %s", err)
+	}
+
+	version, _ := versions.ParseVersion("1.0.0")
+	pkgAddr, _ := sourceaddrs.ParseRegistryPackage("example.com/foo/bar/baz")
+
+	wantDeprecations := map[regaddr.ModulePackage]map[versions.Version]*sourceaddrs.RegistryVersionDeprecation{
+		pkgAddr: {
+			version: &sourceaddrs.RegistryVersionDeprecation{
+				Version: "1.0.0",
+				Reason:  "test reason",
+				Link:    "test link",
+			},
+		},
+	}
+	gotDeprecations := bundle.registryPackageVersionDeprecations
+	if diff := cmp.Diff(wantDeprecations, gotDeprecations); diff != "" {
+		t.Errorf("wrong deprecations\n%s", diff)
+	}
+
+	localPkgDir, err := bundle.LocalPathForRemoteSource(realSource)
+	if err != nil {
+		for pkgAddr, localDir := range builder.remotePackageDirs {
+			t.Logf("contents of %s are in %s", pkgAddr, localDir)
+		}
+		t.Fatalf("builder does not know a local directory for %s: %s", realSource.Package(), err)
+	}
+
+	if info, err := os.Lstat(filepath.Join(localPkgDir, "hello")); err != nil {
+		t.Errorf("problem with output file: %s", err)
+	} else if !info.Mode().IsRegular() {
+		t.Errorf("output file is not a regular file")
+	}
+
+	// Looking up the original registry address at the selected version
+	// should return the same directory, because the registry address is just
+	// an indirection over the same source address.
+	registryPkgDir, err := bundle.LocalPathForRegistrySource(regSource, versions.MustParseVersion("1.0.0"))
+	if err != nil {
+		t.Fatalf("builder does not know a local directory for %s: %s", regSource.Package(), err)
+	}
+	if registryPkgDir != localPkgDir {
+		t.Errorf("local dir for %s doesn't match local dir for %s", regSource, realSource)
+	}
+}
+
 func TestBuilderRemoteDepsDifferingTypes(t *testing.T) {
 	tracer := testBuildTracer{}
 	ctx := tracer.OnContext(context.Background())
@@ -281,6 +370,7 @@ func TestBuilderRemoteDepsDifferingTypes(t *testing.T) {
 			"https://example.com/dependency1.tgz":     "testdata/pkgs/hello",
 			"https://example.com/dependency2.tgz":     "testdata/pkgs/terraformignore",
 		},
+		nil,
 		nil,
 	)
 
@@ -383,6 +473,7 @@ func TestBuilderTerraformIgnore(t *testing.T) {
 			"https://example.com/ignore.tgz": "testdata/pkgs/terraformignore",
 		},
 		nil,
+		nil,
 	)
 
 	startSource := sourceaddrs.MustParseSource("https://example.com/ignore.tgz").(sourceaddrs.RemoteSource)
@@ -441,6 +532,7 @@ func TestBuilderCoalescePackages(t *testing.T) {
 			"https://example.com/dependency1.tgz": "testdata/pkgs/hello",
 			"https://example.com/dependency2.tgz": "testdata/pkgs/hello",
 		},
+		nil,
 		nil,
 	)
 
@@ -542,7 +634,7 @@ func TestBuilderCoalescePackages(t *testing.T) {
 	})
 }
 
-func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]string, registryPackages map[string]map[string]string) *Builder {
+func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]string, registryPackages map[string]map[string]string, registryVersionDeprecations map[string]map[string]*ModulePackageVersionDeprecation) *Builder {
 	t.Helper()
 
 	type fakeRemotePackage struct {
@@ -557,6 +649,7 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 
 	remotePkgs := make([]fakeRemotePackage, 0, len(remotePackages))
 	registryPkgs := make([]fakeRegistryPackage, 0, len(registryPackages))
+	registryDeprecations := make(map[string]map[versions.Version]*ModulePackageVersionDeprecation)
 
 	for pkgAddrRaw, localDir := range remotePackages {
 		pkgAddr, err := sourceaddrs.ParseRemotePackage(pkgAddrRaw)
@@ -593,6 +686,23 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 		registryPkgs = append(registryPkgs, pkg)
 	}
 
+	for pkgAddrRaw, deprecations := range registryVersionDeprecations {
+		pkgAddr, err := sourceaddrs.ParseRegistryPackage(pkgAddrRaw)
+		if err != nil {
+			t.Fatalf("invalid registry package address %q: %s", pkgAddrRaw, err)
+		}
+		if registryDeprecations[pkgAddr.Namespace] == nil {
+			registryDeprecations[pkgAddr.Namespace] = make(map[versions.Version]*ModulePackageVersionDeprecation)
+		}
+		for versionRaw, versionDeprecation := range deprecations {
+			version, err := versions.ParseVersion(versionRaw)
+			if err != nil {
+				t.Fatalf("invalid registry package version %q for %s: %s", versionRaw, pkgAddr, err)
+			}
+			registryDeprecations[pkgAddr.Namespace][version] = versionDeprecation
+		}
+	}
+
 	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
 		var ret FetchSourcePackageResponse
 		// Our fake implementation of "fetching" is to just copy one local
@@ -624,7 +734,8 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 				ret.Versions = make([]ModulePackageInfo, len(pkg.versions))
 				for version := range pkg.versions {
 					ret.Versions = append(ret.Versions, ModulePackageInfo{
-						Version: version,
+						Version:     version,
+						Deprecation: registryDeprecations[pkg.pkgAddr.Namespace][version],
 					})
 				}
 				return ret, nil
