@@ -20,6 +20,12 @@ type PackageMeta struct {
 	gitCommitMessage string
 }
 
+type RegistryVersionDeprecation struct {
+	Version string
+	Reason  string
+	Link    string
+}
+
 // PackageMetaWithGitMetadata returns a [PackageMeta] object with a Git Commit
 // ID and message tracked.
 //

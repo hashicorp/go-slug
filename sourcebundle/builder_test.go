@@ -318,9 +318,9 @@ func TestBuilderRegistryVersionDeprecation(t *testing.T) {
 	version, _ := versions.ParseVersion("1.0.0")
 	pkgAddr, _ := sourceaddrs.ParseRegistryPackage("example.com/foo/bar/baz")
 
-	wantDeprecations := map[regaddr.ModulePackage]map[versions.Version]*sourceaddrs.RegistryVersionDeprecation{
+	wantDeprecations := map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation{
 		pkgAddr: {
-			version: &sourceaddrs.RegistryVersionDeprecation{
+			version: &RegistryVersionDeprecation{
 				Version: "1.0.0",
 				Reason:  "test reason",
 				Link:    "test link",

@@ -3,8 +3,6 @@
 
 package sourcebundle
 
-import "github.com/hashicorp/go-slug/sourceaddrs"
-
 // This file contains some internal-only types used to help with marshalling
 // and unmarshalling our manifest file format. The manifest format is not
 // itself a public interface, so these should stay unexported and any caller
@@ -45,8 +43,8 @@ type manifestRegistryVersion struct {
 	// This SourceAddr is a full source address, so it might potentially
 	// have a sub-path portion. If it does then it must be combined with
 	// any sub-path included in the user's registry module source address.
-	SourceAddr  string                                  `json:"source"`
-	Deprecation *sourceaddrs.RegistryVersionDeprecation `json:"deprecation"`
+	SourceAddr  string                      `json:"source"`
+	Deprecation *RegistryVersionDeprecation `json:"deprecation"`
 }
 
 type manifestPackageMeta struct {

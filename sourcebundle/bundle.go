@@ -33,7 +33,7 @@ type Bundle struct {
 	remotePackageMeta map[sourceaddrs.RemotePackage]*PackageMeta
 
 	registryPackageSources             map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource
-	registryPackageVersionDeprecations map[regaddr.ModulePackage]map[versions.Version]*sourceaddrs.RegistryVersionDeprecation
+	registryPackageVersionDeprecations map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation
 }
 
 // OpenDir opens a bundle rooted at the given base directory.
@@ -56,7 +56,7 @@ func OpenDir(baseDir string) (*Bundle, error) {
 		remotePackageDirs:                  make(map[sourceaddrs.RemotePackage]string),
 		remotePackageMeta:                  make(map[sourceaddrs.RemotePackage]*PackageMeta),
 		registryPackageSources:             make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
-		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*sourceaddrs.RegistryVersionDeprecation),
+		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
 	}
 
 	manifestSrc, err := os.ReadFile(filepath.Join(rootDir, manifestFilename))
@@ -112,7 +112,7 @@ func OpenDir(baseDir string) (*Bundle, error) {
 		}
 		deprecations := ret.registryPackageVersionDeprecations[pkgAddr]
 		if deprecations == nil {
-			deprecations = make(map[versions.Version]*sourceaddrs.RegistryVersionDeprecation)
+			deprecations = make(map[versions.Version]*RegistryVersionDeprecation)
 			ret.registryPackageVersionDeprecations[pkgAddr] = deprecations
 		}
 		for versionStr, mv := range rpm.Versions {
@@ -362,7 +362,7 @@ func (b *Bundle) RegistryPackageVersions(pkgAddr regaddr.ModulePackage) versions
 	return ret
 }
 
-func (b *Bundle) RegistryPackageVersionDeprecation(pkgAddr regaddr.ModulePackage, version versions.Version) *sourceaddrs.RegistryVersionDeprecation {
+func (b *Bundle) RegistryPackageVersionDeprecation(pkgAddr regaddr.ModulePackage, version versions.Version) *RegistryVersionDeprecation {
 	deprecation := b.registryPackageVersionDeprecations[pkgAddr][version]
 	return deprecation
 }

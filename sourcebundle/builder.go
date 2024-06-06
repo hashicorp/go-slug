@@ -73,7 +73,7 @@ type Builder struct {
 	// selected version of each module registry package.
 	resolvedRegistry map[registryPackageVersion]sourceaddrs.RemoteSource
 
-	resolvedRegistryVersionDeprecations map[registryPackageVersion]*sourceaddrs.RegistryVersionDeprecation
+	resolvedRegistryVersionDeprecations map[registryPackageVersion]*RegistryVersionDeprecation
 
 	// registryPackageVersions caches responses from module registry calls to
 	// look up the available versions for a particular module package. Although
@@ -109,7 +109,7 @@ func NewBuilder(targetDir string, fetcher PackageFetcher, registryClient Registr
 		remotePackageDirs:                   make(map[sourceaddrs.RemotePackage]string),
 		remotePackageMeta:                   make(map[sourceaddrs.RemotePackage]*PackageMeta),
 		resolvedRegistry:                    make(map[registryPackageVersion]sourceaddrs.RemoteSource),
-		resolvedRegistryVersionDeprecations: make(map[registryPackageVersion]*sourceaddrs.RegistryVersionDeprecation),
+		resolvedRegistryVersionDeprecations: make(map[registryPackageVersion]*RegistryVersionDeprecation),
 		registryPackageVersions:             make(map[regaddr.ModulePackage][]ModulePackageInfo),
 	}, nil
 }
@@ -407,11 +407,11 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 		realSourceAddr = resp.SourceAddr
 		b.resolvedRegistry[pkgVer] = realSourceAddr
 
-		var deprecation *sourceaddrs.RegistryVersionDeprecation
+		var deprecation *RegistryVersionDeprecation
 		versionDeprecations := extractVersionDeprecationsFromResponse(availablePackageInfos)
 		versionDeprecation := versionDeprecations[selectedVersion]
 		if versionDeprecation != nil {
-			deprecation = &sourceaddrs.RegistryVersionDeprecation{
+			deprecation = &RegistryVersionDeprecation{
 				Version: selectedVersion.String(),
 				Reason:  versionDeprecation.Reason,
 				Link:    versionDeprecation.Link,
