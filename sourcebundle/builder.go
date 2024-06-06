@@ -71,7 +71,9 @@ type Builder struct {
 
 	// resolvedRegistry tracks the underlying remote source address for each
 	// selected version of each module registry package.
-	resolvedRegistry map[registryPackageVersion]sourceaddrs.RemoteSourceInfo
+	resolvedRegistry map[registryPackageVersion]sourceaddrs.RemoteSource
+
+	resolvedRegistryVersionDeprecations map[registryPackageVersion]*sourceaddrs.RegistryVersionDeprecation
 
 	// registryPackageVersions caches responses from module registry calls to
 	// look up the available versions for a particular module package. Although
@@ -100,14 +102,15 @@ func NewBuilder(targetDir string, fetcher PackageFetcher, registryClient Registr
 		return nil, fmt.Errorf("invalid target directory: %w", err)
 	}
 	return &Builder{
-		targetDir:               absDir,
-		fetcher:                 fetcher,
-		registryClient:          registryClient,
-		analyzed:                make(map[remoteArtifact]struct{}),
-		remotePackageDirs:       make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:       make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		resolvedRegistry:        make(map[registryPackageVersion]sourceaddrs.RemoteSourceInfo),
-		registryPackageVersions: make(map[regaddr.ModulePackage][]ModulePackageInfo),
+		targetDir:                           absDir,
+		fetcher:                             fetcher,
+		registryClient:                      registryClient,
+		analyzed:                            make(map[remoteArtifact]struct{}),
+		remotePackageDirs:                   make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:                   make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		resolvedRegistry:                    make(map[registryPackageVersion]sourceaddrs.RemoteSource),
+		resolvedRegistryVersionDeprecations: make(map[registryPackageVersion]*sourceaddrs.RegistryVersionDeprecation),
+		registryPackageVersions:             make(map[regaddr.ModulePackage][]ModulePackageInfo),
 	}, nil
 }
 
@@ -384,7 +387,7 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 		pkg:     pkgAddr,
 		version: selectedVersion,
 	}
-	realSourceInfo, ok := b.resolvedRegistry[pkgVer]
+	realSourceAddr, ok := b.resolvedRegistry[pkgVer]
 	if !ok {
 		var reqCtx context.Context
 		if cb := trace.RegistryPackageSourceStart; cb != nil {
@@ -401,31 +404,27 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 			}
 			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to find real source address for %s %s: %w", pkgAddr, selectedVersion, err)
 		}
+		realSourceAddr = resp.SourceAddr
+		b.resolvedRegistry[pkgVer] = realSourceAddr
+
+		var deprecation *sourceaddrs.RegistryVersionDeprecation
 		versionDeprecations := extractVersionDeprecationsFromResponse(availablePackageInfos)
 		versionDeprecation := versionDeprecations[selectedVersion]
 		if versionDeprecation != nil {
-			realSourceInfo = sourceaddrs.RemoteSourceInfo{
-				RemoteSource: resp.SourceAddr,
-				VersionDeprecation: &sourceaddrs.Deprecation{
-					Version: selectedVersion.String(),
-					Reason:  versionDeprecation.Reason,
-					Link:    versionDeprecation.Link,
-				},
-			}
-		} else {
-			realSourceInfo = sourceaddrs.RemoteSourceInfo{
-				RemoteSource:       resp.SourceAddr,
-				VersionDeprecation: nil,
+			deprecation = &sourceaddrs.RegistryVersionDeprecation{
+				Version: selectedVersion.String(),
+				Reason:  versionDeprecation.Reason,
+				Link:    versionDeprecation.Link,
 			}
 		}
+		b.resolvedRegistryVersionDeprecations[pkgVer] = deprecation
 
-		b.resolvedRegistry[pkgVer] = realSourceInfo
 		if cb := trace.RegistryPackageSourceSuccess; cb != nil {
-			cb(reqCtx, pkgAddr, selectedVersion, realSourceInfo.RemoteSource)
+			cb(reqCtx, pkgAddr, selectedVersion, realSourceAddr)
 		}
 	} else {
 		if cb := trace.RegistryPackageSourceAlready; cb != nil {
-			cb(ctx, pkgAddr, selectedVersion, realSourceInfo.RemoteSource)
+			cb(ctx, pkgAddr, selectedVersion, realSourceAddr)
 		}
 	}
 
@@ -433,7 +432,7 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 	// need to combine that with the one in realSourceAddr to get the correct
 	// final path: the sourceAddr subpath is relative to the realSourceAddr
 	// subpath.
-	realSourceAddr := sourceAddr.FinalSourceAddr(realSourceInfo.RemoteSource)
+	realSourceAddr = sourceAddr.FinalSourceAddr(realSourceAddr)
 
 	return realSourceAddr, nil
 }
@@ -605,11 +604,13 @@ func (b *Builder) writeManifest(filename string) error {
 			manifestMeta = &root.RegistryMeta[len(root.RegistryMeta)-1]
 			registryObjs[rpv.pkg] = manifestMeta
 		}
+		deprecation := b.resolvedRegistryVersionDeprecations[rpv]
 		manifestMeta.Versions[rpv.version.String()] = manifestRegistryVersion{
-			SourceAddr:  sourceInfo.RemoteSource.String(),
-			Deprecation: sourceInfo.VersionDeprecation,
+			SourceAddr:  sourceInfo.String(),
+			Deprecation: deprecation,
 		}
 	}
+
 	sort.Slice(root.RegistryMeta, func(i, j int) bool {
 		return root.Packages[i].SourceAddr < root.Packages[j].SourceAddr
 	})
@@ -736,8 +737,8 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 
 func extractVersionListFromResponse(modPackageInfos []ModulePackageInfo) versions.List {
 	vs := make(versions.List, len(modPackageInfos))
-	for _, v := range modPackageInfos {
-		vs = append(vs, v.Version)
+	for index, v := range modPackageInfos {
+		vs[index] = v.Version
 	}
 	vs.Sort()
 	return vs

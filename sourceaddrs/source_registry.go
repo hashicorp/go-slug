@@ -29,6 +29,12 @@ type RegistrySource struct {
 	subPath string
 }
 
+type RegistryVersionDeprecation struct {
+	Version string
+	Reason  string
+	Link    string
+}
+
 // sourceSigil implements Source
 func (s RegistrySource) sourceSigil() {}
 

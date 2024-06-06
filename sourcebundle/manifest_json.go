@@ -45,8 +45,8 @@ type manifestRegistryVersion struct {
 	// This SourceAddr is a full source address, so it might potentially
 	// have a sub-path portion. If it does then it must be combined with
 	// any sub-path included in the user's registry module source address.
-	SourceAddr  string                   `json:"source"`
-	Deprecation *sourceaddrs.Deprecation `json:"deprecation"`
+	SourceAddr  string                                  `json:"source"`
+	Deprecation *sourceaddrs.RegistryVersionDeprecation `json:"deprecation"`
 }
 
 type manifestPackageMeta struct {
