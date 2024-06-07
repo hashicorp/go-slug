@@ -691,15 +691,15 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 		if err != nil {
 			t.Fatalf("invalid registry package address %q: %s", pkgAddrRaw, err)
 		}
-		if registryDeprecations[pkgAddr.Namespace] == nil {
-			registryDeprecations[pkgAddr.Namespace] = make(map[versions.Version]*ModulePackageVersionDeprecation)
-		}
+
 		for versionRaw, versionDeprecation := range deprecations {
 			version, err := versions.ParseVersion(versionRaw)
 			if err != nil {
 				t.Fatalf("invalid registry package version %q for %s: %s", versionRaw, pkgAddr, err)
 			}
-			registryDeprecations[pkgAddr.Namespace][version] = versionDeprecation
+			registryDeprecations[pkgAddr.Namespace] = map[versions.Version]*ModulePackageVersionDeprecation{
+				version: versionDeprecation,
+			}
 		}
 	}
 

@@ -363,8 +363,7 @@ func (b *Bundle) RegistryPackageVersions(pkgAddr regaddr.ModulePackage) versions
 }
 
 func (b *Bundle) RegistryPackageVersionDeprecation(pkgAddr regaddr.ModulePackage, version versions.Version) *RegistryVersionDeprecation {
-	deprecation := b.registryPackageVersionDeprecations[pkgAddr][version]
-	return deprecation
+	return b.registryPackageVersionDeprecations[pkgAddr][version]
 }
 
 // RegistryPackageSourceAddr returns the remote source address corresponding
