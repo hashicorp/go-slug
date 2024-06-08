@@ -37,7 +37,8 @@ func PackageMetaWithGitMetadata(
 	commitMessage string,
 ) *PackageMeta {
 	return &PackageMeta{
-		gitCommitID: commitID,
+		gitCommitID:      commitID,
+		gitCommitMessage: commitMessage,
 	}
 }
 
