@@ -73,12 +73,18 @@ type Builder struct {
 	// selected version of each module registry package.
 	resolvedRegistry map[registryPackageVersion]sourceaddrs.RemoteSource
 
+	// packageVersionDeprecations tracks potential deprecations for
+	// each package version. If a package version is not deprecated, its mapped value will be nil.
+	// This data, including both package versions and their potential deprecations, is gathered from the registry client and cached. It is included in the bundle,
+	// where it can be used to warn about deprecated package versions.
+	packageVersionDeprecations map[registryPackageVersion]*RegistryVersionDeprecation
+
 	// registryPackageVersions caches responses from module registry calls to
 	// look up the available versions for a particular module package. Although
 	// these could potentially change while we're running, we assume that the
 	// lifetime of a particular Builder is short enough for that not to
 	// matter.
-	registryPackageVersions map[regaddr.ModulePackage]versions.List
+	registryPackageVersions map[regaddr.ModulePackage][]ModulePackageInfo
 
 	mu sync.Mutex
 }
@@ -100,14 +106,15 @@ func NewBuilder(targetDir string, fetcher PackageFetcher, registryClient Registr
 		return nil, fmt.Errorf("invalid target directory: %w", err)
 	}
 	return &Builder{
-		targetDir:               absDir,
-		fetcher:                 fetcher,
-		registryClient:          registryClient,
-		analyzed:                make(map[remoteArtifact]struct{}),
-		remotePackageDirs:       make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:       make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		resolvedRegistry:        make(map[registryPackageVersion]sourceaddrs.RemoteSource),
-		registryPackageVersions: make(map[regaddr.ModulePackage]versions.List),
+		targetDir:                  absDir,
+		fetcher:                    fetcher,
+		registryClient:             registryClient,
+		analyzed:                   make(map[remoteArtifact]struct{}),
+		remotePackageDirs:          make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:          make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		resolvedRegistry:           make(map[registryPackageVersion]sourceaddrs.RemoteSource),
+		packageVersionDeprecations: make(map[registryPackageVersion]*RegistryVersionDeprecation),
+		registryPackageVersions:    make(map[regaddr.ModulePackage][]ModulePackageInfo),
 	}, nil
 }
 
@@ -343,7 +350,8 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 	trace := buildTraceFromContext(ctx)
 
 	pkgAddr := sourceAddr.Package()
-	availableVersions, ok := b.registryPackageVersions[pkgAddr]
+	availablePackageInfos, ok := b.registryPackageVersions[pkgAddr]
+	var availableVersions versions.List
 	if !ok {
 		var reqCtx context.Context
 		if cb := trace.RegistryPackageVersionsStart; cb != nil {
@@ -360,14 +368,15 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 			}
 			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to query available versions for %s: %w", pkgAddr, err)
 		}
-		vs := resp.Versions
-		vs.Sort()
-		availableVersions = vs
-		b.registryPackageVersions[pkgAddr] = availableVersions
+
+		availablePackageInfos = resp.Versions
+		b.registryPackageVersions[pkgAddr] = resp.Versions
+		availableVersions = extractVersionListFromResponse(availablePackageInfos)
 		if cb := trace.RegistryPackageVersionsSuccess; cb != nil {
 			cb(reqCtx, pkgAddr, availableVersions)
 		}
 	} else {
+		availableVersions = extractVersionListFromResponse(availablePackageInfos)
 		if cb := trace.RegistryPackageVersionsAlready; cb != nil {
 			cb(ctx, pkgAddr, availableVersions)
 		}
@@ -401,6 +410,25 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 		}
 		realSourceAddr = resp.SourceAddr
 		b.resolvedRegistry[pkgVer] = realSourceAddr
+
+		var versionDeprecation *ModulePackageVersionDeprecation
+		for _, v := range availablePackageInfos {
+			if selectedVersion.Same(v.Version) {
+				versionDeprecation = v.Deprecation
+				break
+			}
+
+		}
+		var deprecation *RegistryVersionDeprecation
+		if versionDeprecation != nil {
+			deprecation = &RegistryVersionDeprecation{
+				Version: selectedVersion.String(),
+				Reason:  versionDeprecation.Reason,
+				Link:    versionDeprecation.Link,
+			}
+		}
+		b.packageVersionDeprecations[pkgVer] = deprecation
+
 		if cb := trace.RegistryPackageSourceSuccess; cb != nil {
 			cb(reqCtx, pkgAddr, selectedVersion, realSourceAddr)
 		}
@@ -576,7 +604,7 @@ func (b *Builder) writeManifest(filename string) error {
 	})
 
 	registryObjs := make(map[regaddr.ModulePackage]*manifestRegistryMeta)
-	for rpv, sourceAddr := range b.resolvedRegistry {
+	for rpv, sourceInfo := range b.resolvedRegistry {
 		manifestMeta, ok := registryObjs[rpv.pkg]
 		if !ok {
 			root.RegistryMeta = append(root.RegistryMeta, manifestRegistryMeta{
@@ -586,10 +614,13 @@ func (b *Builder) writeManifest(filename string) error {
 			manifestMeta = &root.RegistryMeta[len(root.RegistryMeta)-1]
 			registryObjs[rpv.pkg] = manifestMeta
 		}
+		deprecation := b.packageVersionDeprecations[rpv]
 		manifestMeta.Versions[rpv.version.String()] = manifestRegistryVersion{
-			SourceAddr: sourceAddr.String(),
+			SourceAddr:  sourceInfo.String(),
+			Deprecation: deprecation,
 		}
 	}
+
 	sort.Slice(root.RegistryMeta, func(i, j int) bool {
 		return root.Packages[i].SourceAddr < root.Packages[j].SourceAddr
 	})
@@ -712,4 +743,13 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 
 		return nil
 	}
+}
+
+func extractVersionListFromResponse(modPackageInfos []ModulePackageInfo) versions.List {
+	vs := make(versions.List, len(modPackageInfos))
+	for index, v := range modPackageInfos {
+		vs[index] = v.Version
+	}
+	vs.Sort()
+	return vs
 }

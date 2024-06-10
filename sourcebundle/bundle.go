@@ -32,7 +32,8 @@ type Bundle struct {
 	remotePackageDirs map[sourceaddrs.RemotePackage]string
 	remotePackageMeta map[sourceaddrs.RemotePackage]*PackageMeta
 
-	registryPackageSources map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource
+	registryPackageSources             map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource
+	registryPackageVersionDeprecations map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation
 }
 
 // OpenDir opens a bundle rooted at the given base directory.
@@ -51,10 +52,11 @@ func OpenDir(baseDir string) (*Bundle, error) {
 	}
 
 	ret := &Bundle{
-		rootDir:                rootDir,
-		remotePackageDirs:      make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:      make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		registryPackageSources: make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
+		rootDir:                            rootDir,
+		remotePackageDirs:                  make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:                  make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		registryPackageSources:             make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
+		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
 	}
 
 	manifestSrc, err := os.ReadFile(filepath.Join(rootDir, manifestFilename))
@@ -108,11 +110,17 @@ func OpenDir(baseDir string) (*Bundle, error) {
 			vs = make(map[versions.Version]sourceaddrs.RemoteSource)
 			ret.registryPackageSources[pkgAddr] = vs
 		}
+		deprecations := ret.registryPackageVersionDeprecations[pkgAddr]
+		if deprecations == nil {
+			deprecations = make(map[versions.Version]*RegistryVersionDeprecation)
+			ret.registryPackageVersionDeprecations[pkgAddr] = deprecations
+		}
 		for versionStr, mv := range rpm.Versions {
 			version, err := versions.ParseVersion(versionStr)
 			if err != nil {
 				return nil, fmt.Errorf("invalid registry package version %q: %w", versionStr, err)
 			}
+			deprecations[version] = mv.Deprecation
 			sourceAddr, err := sourceaddrs.ParseRemoteSource(mv.SourceAddr)
 			if err != nil {
 				return nil, fmt.Errorf("invalid registry package source address %q: %w", mv.SourceAddr, err)
@@ -352,6 +360,10 @@ func (b *Bundle) RegistryPackageVersions(pkgAddr regaddr.ModulePackage) versions
 	}
 	ret.Sort()
 	return ret
+}
+
+func (b *Bundle) RegistryPackageVersionDeprecation(pkgAddr regaddr.ModulePackage, version versions.Version) *RegistryVersionDeprecation {
+	return b.registryPackageVersionDeprecations[pkgAddr][version]
 }
 
 // RegistryPackageSourceAddr returns the remote source address corresponding
