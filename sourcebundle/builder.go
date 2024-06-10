@@ -73,8 +73,10 @@ type Builder struct {
 	// selected version of each module registry package.
 	resolvedRegistry map[registryPackageVersion]sourceaddrs.RemoteSource
 
-	// resolvedRegistryVersionDeprecations tracks potential deprecations for
-	// each package version
+	// packageVersionDeprecations tracks potential deprecations for
+	// each package version. If a package version is not deprecated, its mapped value will be nil.
+	// This data, including both package versions and their potential deprecations, is gathered from the registry client and cached. It is included in the bundle,
+	// where it can be used to warn about deprecated package versions.
 	packageVersionDeprecations map[registryPackageVersion]*RegistryVersionDeprecation
 
 	// registryPackageVersions caches responses from module registry calls to
@@ -409,9 +411,15 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 		realSourceAddr = resp.SourceAddr
 		b.resolvedRegistry[pkgVer] = realSourceAddr
 
+		var versionDeprecation *ModulePackageVersionDeprecation
+		for _, v := range availablePackageInfos {
+			if selectedVersion.Same(v.Version) {
+				versionDeprecation = v.Deprecation
+				break
+			}
+
+		}
 		var deprecation *RegistryVersionDeprecation
-		versionDeprecations := extractVersionDeprecationsFromResponse(availablePackageInfos)
-		versionDeprecation := versionDeprecations[selectedVersion]
 		if versionDeprecation != nil {
 			deprecation = &RegistryVersionDeprecation{
 				Version: selectedVersion.String(),
@@ -744,12 +752,4 @@ func extractVersionListFromResponse(modPackageInfos []ModulePackageInfo) version
 	}
 	vs.Sort()
 	return vs
-}
-
-func extractVersionDeprecationsFromResponse(modPackageInfos []ModulePackageInfo) map[versions.Version]*ModulePackageVersionDeprecation {
-	versionDeprecations := make(map[versions.Version]*ModulePackageVersionDeprecation, len(modPackageInfos))
-	for _, v := range modPackageInfos {
-		versionDeprecations[v.Version] = v.Deprecation
-	}
-	return versionDeprecations
 }
