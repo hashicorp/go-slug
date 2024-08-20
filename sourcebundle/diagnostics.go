@@ -4,8 +4,6 @@
 package sourcebundle
 
 import (
-	"fmt"
-
 	"github.com/hashicorp/go-slug/sourceaddrs"
 )
 
@@ -13,7 +11,7 @@ import (
 // during an operation.
 type Diagnostics []Diagnostic
 
-// Diagnostics represents a single problem (error or warning) that has occurred
+// Diagnostic represents a single problem (error or warning) that has occurred
 // during an operation.
 //
 // This interface has no concrete implementations in this package.
@@ -42,24 +40,6 @@ func (diags Diagnostics) HasErrors() bool {
 		}
 	}
 	return false
-}
-
-func (diags Diagnostics) Append(more ...interface{}) Diagnostics {
-	for _, item := range more {
-		if item == nil {
-			continue
-		}
-
-		switch item := item.(type) {
-		case Diagnostic:
-			diags = append(diags, item)
-		case Diagnostics:
-			diags = append(diags, item...)
-		default:
-			panic(fmt.Errorf("can't construct diagnostic(s) from %T", item))
-		}
-	}
-	return diags
 }
 
 type DiagSeverity rune
