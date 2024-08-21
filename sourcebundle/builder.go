@@ -256,7 +256,7 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 
 			realSource, err := b.findRegistryPackageSource(ctx, next.sourceAddr, next.versions)
 			if err != nil {
-				diags = diags.Append(&internalDiagnostic{
+				diags = append(diags, &internalDiagnostic{
 					severity: DiagError,
 					summary:  "Cannot resolve module registry package",
 					detail:   fmt.Sprintf("Error resolving module registry source %s: %s.", next.sourceAddr, err),
@@ -279,7 +279,7 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 			pkgAddr := next.sourceAddr.Package()
 			pkgLocalDir, err := b.ensureRemotePackage(ctx, pkgAddr)
 			if err != nil {
-				diags = diags.Append(&internalDiagnostic{
+				diags = append(diags, &internalDiagnostic{
 					severity: DiagError,
 					summary:  "Cannot install source package",
 					detail:   fmt.Sprintf("Error installing %s: %s.", next.sourceAddr.Package(), err),
@@ -317,7 +317,7 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 						})
 					},
 					localResolveErrCb: func(err error) {
-						diags = diags.Append(&internalDiagnostic{
+						diags = append(diags, &internalDiagnostic{
 							severity: DiagError,
 							summary:  "Invalid relative source address",
 							detail:   fmt.Sprintf("Invalid relative path from %s: %s.", next.sourceAddr, err),
@@ -333,7 +333,7 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 						cb(ctx, moreDiags)
 					}
 				}
-				diags = diags.Append(moreDiags)
+				diags = append(diags, moreDiags...)
 				if diags.HasErrors() {
 					continue
 				}
