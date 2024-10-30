@@ -20,8 +20,9 @@ import (
 	"github.com/apparentlymart/go-versions/versions"
 	"github.com/apparentlymart/go-versions/versions/constraints"
 	"github.com/google/go-cmp/cmp"
-	"github.com/hashicorp/go-slug/sourceaddrs"
 	regaddr "github.com/hashicorp/terraform-registry-address"
+
+	"github.com/hashicorp/go-slug/sourceaddrs"
 )
 
 func TestBuilderSimple(t *testing.T) {
@@ -877,13 +878,13 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 	file, err := fsys.Open(filePath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			diags = diags.Append(&internalDiagnostic{
+			diags = append(diags, &internalDiagnostic{
 				severity: DiagError,
 				summary:  "Missing stub dependency file",
 				detail:   fmt.Sprintf("There is no file %q in the package.", filePath),
 			})
 		} else {
-			diags = diags.Append(&internalDiagnostic{
+			diags = append(diags, &internalDiagnostic{
 				severity: DiagError,
 				summary:  "Invalid stub dependency file",
 				detail:   fmt.Sprintf("Cannot open %q in the package: %s.", filePath, err),
@@ -901,7 +902,7 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 		sourceAddrRaw, versionsRaw, hasVersions := strings.Cut(line, " ")
 		sourceAddr, err := sourceaddrs.ParseSource(sourceAddrRaw)
 		if err != nil {
-			diags = diags.Append(&internalDiagnostic{
+			diags = append(diags, &internalDiagnostic{
 				severity: DiagError,
 				summary:  "Invalid source address in stub dependency file",
 				detail:   fmt.Sprintf("Cannot use %q as a source address: %s.", sourceAddrRaw, err),
@@ -909,7 +910,7 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 			continue
 		}
 		if hasVersions && !sourceAddr.SupportsVersionConstraints() {
-			diags = diags.Append(&internalDiagnostic{
+			diags = append(diags, &internalDiagnostic{
 				severity: DiagError,
 				summary:  "Invalid source address in stub dependency file",
 				detail:   fmt.Sprintf("Cannot specify a version constraint string for %s.", sourceAddr),
@@ -920,7 +921,7 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 		if hasVersions {
 			cnsts, err := constraints.ParseRubyStyleMulti(versionsRaw)
 			if err != nil {
-				diags = diags.Append(&internalDiagnostic{
+				diags = append(diags, &internalDiagnostic{
 					severity: DiagError,
 					summary:  "Invalid version constraints in stub dependency file",
 					detail:   fmt.Sprintf("Cannot use %q as version constraints for %s: %s.", versionsRaw, sourceAddrRaw, err),
@@ -947,7 +948,7 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 		case sourceaddrs.LocalSource:
 			deps.AddLocalSource(sourceAddr, depFinder)
 		default:
-			diags = diags.Append(&internalDiagnostic{
+			diags = append(diags, &internalDiagnostic{
 				severity: DiagError,
 				summary:  "Unsupported source address type",
 				detail:   fmt.Sprintf("stubDependencyFinder doesn't support %T addresses", sourceAddr),
@@ -956,7 +957,7 @@ func (f stubDependencyFinder) FindDependencies(fsys fs.FS, subPath string, deps 
 		}
 	}
 	if err := sc.Err(); err != nil {
-		diags = diags.Append(&internalDiagnostic{
+		diags = append(diags, &internalDiagnostic{
 			severity: DiagError,
 			summary:  "Invalid stub dependency file",
 			detail:   fmt.Sprintf("Failed to read %s in the package: %s.", filePath, err),
