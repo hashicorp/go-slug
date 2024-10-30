@@ -622,7 +622,7 @@ func (b *Builder) writeManifest(filename string) error {
 	}
 
 	sort.Slice(root.RegistryMeta, func(i, j int) bool {
-		return root.Packages[i].SourceAddr < root.Packages[j].SourceAddr
+		return root.RegistryMeta[i].SourceAddr < root.RegistryMeta[j].SourceAddr
 	})
 
 	buf, err := json.MarshalIndent(&root, "", "  ")
