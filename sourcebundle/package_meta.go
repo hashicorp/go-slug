@@ -20,6 +20,12 @@ type PackageMeta struct {
 	gitCommitMessage string
 }
 
+type RegistryVersionDeprecation struct {
+	Version string
+	Reason  string
+	Link    string
+}
+
 // PackageMetaWithGitMetadata returns a [PackageMeta] object with a Git Commit
 // ID and message tracked.
 //
@@ -31,7 +37,8 @@ func PackageMetaWithGitMetadata(
 	commitMessage string,
 ) *PackageMeta {
 	return &PackageMeta{
-		gitCommitID: commitID,
+		gitCommitID:      commitID,
+		gitCommitMessage: commitMessage,
 	}
 }
 
