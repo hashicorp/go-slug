@@ -76,6 +76,9 @@ func DereferenceSymlinks() PackerOption {
 // be expressly permitted, whereas they are forbidden by default. Exercise
 // caution when using this option. A symlink matches path if its target
 // resolves to path exactly, or if path is a parent directory of target.
+//
+// Deprecated: This option is deprecated and will be removed in a future
+// release.
 func AllowSymlinkTarget(path string) PackerOption {
 	return func(p *Packer) error {
 		p.allowSymlinkTargets = append(p.allowSymlinkTargets, path)
@@ -87,7 +90,7 @@ func AllowSymlinkTarget(path string) PackerOption {
 type Packer struct {
 	dereference          bool
 	applyTerraformIgnore bool
-	allowSymlinkTargets  []string
+	allowSymlinkTargets  []string // Deprecated
 }
 
 // NewPacker is a constructor for Packer.
