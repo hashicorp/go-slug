@@ -54,6 +54,48 @@ func TestNewUnpackInfo(t *testing.T) {
 		}
 	})
 
+	t.Run("disallow zipslip extended", func(t *testing.T) {
+		dst := t.TempDir()
+
+		err := os.Symlink("..", path.Join(dst, "subdir"))
+		if err != nil {
+			t.Fatalf("failed to create temp symlink: %s", err)
+		}
+
+		_, err = NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo/../subdir/escapes",
+			Typeflag: tar.TypeReg,
+		})
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		expected := "through symlink"
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+
+	t.Run("stay in dst", func(t *testing.T) {
+		tmp := t.TempDir()
+		dst := path.Join(tmp, "dst")
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "../dst2/escapes",
+			Typeflag: tar.TypeReg,
+		})
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		expected := "traversal with \"..\" outside of current"
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+
 	t.Run("disallow strange types", func(t *testing.T) {
 		_, err := NewUnpackInfo("test", &tar.Header{
 			Name:     "subdir/escapes",
