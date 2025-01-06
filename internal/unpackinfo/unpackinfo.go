@@ -34,11 +34,14 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	path := header.Name
 
 	if path[0] == '/' {
-		path = path[1:]
+		path = strings.TrimPrefix(path, "/")
 	}
 	path = filepath.Join(dst, path)
 
 	// Check for paths outside our directory, they are forbidden
+	if len(dst) > 0 && !strings.HasSuffix(dst, "/") {
+		dst += "/"
+	}
 	target := filepath.Clean(path)
 	if !strings.HasPrefix(target, dst) {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
@@ -65,7 +68,7 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 			// Parent directory structure is incomplete. Technically this
 			// means from here upward cannot be a symlink, so we cancel the
 			// remaining path tests.
-			break
+			continue
 		}
 		if err != nil {
 			return UnpackInfo{}, fmt.Errorf("failed to evaluate path %q: %w", header.Name, err)
