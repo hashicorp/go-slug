@@ -152,6 +152,42 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatalf("expected nil, got %q", err)
 		}
 	})
+	t.Run("valid path multiple / prefix", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "///////foo",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid path with / sufix", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo/",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid destination with / prefix", func(t *testing.T) {
+		dst := "/" + t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo/",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
 	t.Run("valid symlink", func(t *testing.T) {
 		dst := t.TempDir()
 
