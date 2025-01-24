@@ -30,18 +30,21 @@ type UnpackInfo struct {
 // It will return an error if the header represents an illegal symlink extraction
 // or if the entry type is not supported by go-slug.
 func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
-	// Get rid of absolute paths.
-	path := header.Name
-
-	if path[0] == '/' {
-		path = strings.TrimPrefix(path, "/")
+	// Check for empty destination
+	if len(dst) == 0 {
+		return UnpackInfo{}, errors.New("empty destination is not allowed")
 	}
-	path = filepath.Join(dst, path)
+
+	// Get rid of absolute paths.
+	path := strings.TrimLeft(header.Name, "/")
 
 	// Check for paths outside our directory, they are forbidden
-	if len(dst) > 0 && !strings.HasSuffix(dst, "/") {
+	if !strings.HasSuffix(dst, "/") && len(path) != 0 {
 		dst += "/"
 	}
+
+	path = filepath.Join(dst, path)
+
 	target := filepath.Clean(path)
 	if !strings.HasPrefix(target, dst) {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
