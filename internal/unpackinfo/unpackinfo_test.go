@@ -145,7 +145,8 @@ func TestNewUnpackInfo(t *testing.T) {
 		}
 	})
 	t.Run("destination starting with ./", func(t *testing.T) {
-		outsideDst := filepath.Join("./" + t.TempDir())
+		dst := t.TempDir()
+		outsideDst := "./" + dst
 		result, err := NewUnpackInfo(outsideDst, &tar.Header{
 			Name:     "foo.txt",
 			Typeflag: tar.TypeSymlink,
@@ -163,8 +164,23 @@ func TestNewUnpackInfo(t *testing.T) {
 
 	t.Run("destination starting with ./ followed with ../", func(t *testing.T) {
 		dst := t.TempDir()
-		outsideDst := filepath.Join("./../../" + dst)
-		_, err := NewUnpackInfo(outsideDst, &tar.Header{
+		_, err := NewUnpackInfo("./../../"+dst, &tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		expected := "traversal with \"..\" outside of current"
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+	t.Run("destination followed with ../", func(t *testing.T) {
+		dst := t.TempDir()
+		_, err := NewUnpackInfo(dst+"../../foo", &tar.Header{
 			Name:     "foo.txt",
 			Typeflag: tar.TypeSymlink,
 		})

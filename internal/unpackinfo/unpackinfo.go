@@ -37,19 +37,14 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 
 	// Clean the destination path
 	dst = filepath.Clean(dst)
-
-	// Get rid of absolute paths.
-	path := header.Name
-	if filepath.IsAbs(path) {
-		path = path[1:]
-	}
+	path := filepath.Clean(header.Name)
 
 	path = filepath.Join(dst, path)
 	target := filepath.Clean(path)
 
 	// Check for path traversal by ensuring the target is within the destination
 	rel, err := filepath.Rel(dst, target)
-	if err != nil || strings.HasPrefix(rel, "..") || strings.Contains(dst, "..") || strings.Contains(target, "..") || filepath.IsAbs(rel) {
+	if err != nil || strings.HasPrefix(rel, "..") || strings.Contains(dst, "..") || strings.Contains(path, "..") || strings.Contains(target, "..") {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
 	}
 
