@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +110,168 @@ func TestNewUnpackInfo(t *testing.T) {
 		expected := "unsupported file type"
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+	t.Run("path starting with ./", func(t *testing.T) {
+		dst := t.TempDir()
+		result, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "./test/foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+
+		expected := dst + "/test/foo.txt"
+		if result.Path != expected {
+			t.Fatalf("expected error to contain %q, got %q", expected, result.Path)
+		}
+	})
+	t.Run("path starting with ./ followed with ../", func(t *testing.T) {
+		dst := t.TempDir()
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "./../../test/foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		expected := "traversal with \"..\" outside of current"
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+	t.Run("destination starting with ./", func(t *testing.T) {
+		dst := t.TempDir()
+		outsideDst := "./" + dst
+		result, err := NewUnpackInfo(outsideDst, &tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+
+		expected := filepath.Join(outsideDst, "foo.txt")
+		if expected != result.Path {
+			t.Fatalf("expected error to contain %q, got %q", expected, result.Path)
+		}
+	})
+	t.Run("empty destination", func(t *testing.T) {
+		emptyDestination := ""
+		_, err := NewUnpackInfo(emptyDestination, &tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		expected := "empty destination is not allowed"
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err)
+		}
+	})
+	t.Run("valid empty path", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid empty path with destination without the / sufix", func(t *testing.T) {
+		dst := t.TempDir()
+		dst = strings.TrimSuffix(dst, "/")
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid path multiple / prefix", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "///////foo",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid path with / sufix", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo/",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid destination with / prefix", func(t *testing.T) {
+		dst := "/" + t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo/",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid symlink", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid file", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo.txt",
+			Typeflag: tar.TypeReg,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+	t.Run("valid directory", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "foo",
+			Typeflag: tar.TypeDir,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
 		}
 	})
 }
