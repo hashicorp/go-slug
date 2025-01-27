@@ -49,13 +49,8 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 
 	// Check for path traversal by ensuring the target is within the destination
 	rel, err := filepath.Rel(dst, target)
-	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+	if err != nil || strings.HasPrefix(rel, "..") || strings.Contains(dst, "..") || strings.Contains(target, "..") || filepath.IsAbs(rel) {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
-	}
-
-	// Additional check for path traversal in the destination and target
-	if strings.Contains(dst, "..") || strings.Contains(target, "..") {
-		return UnpackInfo{}, errors.New("invalid path, traversal with \"..\" is not allowed")
 	}
 
 	// Ensure the destination is not through any symlinks. This prevents
