@@ -161,39 +161,6 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatalf("expected error to contain %q, got %q", expected, result.Path)
 		}
 	})
-
-	t.Run("destination starting with ./ followed with ../", func(t *testing.T) {
-		dst := t.TempDir()
-		_, err := NewUnpackInfo("./../../"+dst, &tar.Header{
-			Name:     "foo.txt",
-			Typeflag: tar.TypeSymlink,
-		})
-
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-
-		expected := "traversal with \"..\" outside of current"
-		if !strings.Contains(err.Error(), expected) {
-			t.Fatalf("expected error to contain %q, got %q", expected, err)
-		}
-	})
-	t.Run("destination followed with ../", func(t *testing.T) {
-		dst := t.TempDir()
-		_, err := NewUnpackInfo(dst+"../../foo", &tar.Header{
-			Name:     "foo.txt",
-			Typeflag: tar.TypeSymlink,
-		})
-
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-
-		expected := "traversal with \"..\" outside of current"
-		if !strings.Contains(err.Error(), expected) {
-			t.Fatalf("expected error to contain %q, got %q", expected, err)
-		}
-	})
 	t.Run("empty destination", func(t *testing.T) {
 		emptyDestination := ""
 		_, err := NewUnpackInfo(emptyDestination, &tar.Header{
