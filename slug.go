@@ -427,11 +427,14 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Handle symlinks, directories, non-regular files
 		if info.IsSymlink() {
+
 			if ok, err := p.validSymlink(dst, header.Name, header.Linkname); ok {
 				// Create the symlink.
-				if err = os.Symlink(header.Linkname, info.Path); err != nil {
+				headerName := filepath.Clean(header.Name)
+				headerLinkname := filepath.Clean(header.Linkname)
+				if err = os.Symlink(headerLinkname, info.Path); err != nil {
 					return fmt.Errorf("failed creating symlink (%q -> %q): %w",
-						header.Name, header.Linkname, err)
+						headerName, headerLinkname, err)
 				}
 			} else {
 				return err
@@ -507,7 +510,7 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 	// Get the absolute path to the file path.
 	absPath := path
 	if !filepath.IsAbs(absPath) {
-		absPath = filepath.Join(absRoot, path)
+		absPath = filepath.Clean(filepath.Join(absRoot, path))
 	}
 
 	// Get the absolute path of the symlink target.
@@ -515,11 +518,16 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 	if filepath.IsAbs(target) {
 		absTarget = filepath.Clean(target)
 	} else {
-		absTarget = filepath.Join(filepath.Dir(absPath), target)
+		absTarget = filepath.Clean(filepath.Join(filepath.Dir(absPath), target))
 	}
 
 	// Target falls within root.
-	if strings.HasPrefix(absTarget, absRoot) {
+	rel, err := filepath.Rel(absRoot, absTarget)
+	if err != nil {
+		return false, fmt.Errorf("couldn't find relative path : %w", err)
+	}
+
+	if rel != ".." && !(len(rel) >= 3 && rel[:3] == "../") {
 		return true, nil
 	}
 
@@ -529,6 +537,7 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 		if !filepath.IsAbs(prefix) {
 			prefix = filepath.Join(absRoot, prefix)
 		}
+		prefix = filepath.Clean(prefix)
 
 		// Exact match is allowed.
 		if absTarget == prefix {
@@ -539,7 +548,13 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 		if !strings.HasSuffix(prefix, "/") {
 			prefix += "/"
 		}
-		if strings.HasPrefix(absTarget, prefix) {
+
+		rel, err := filepath.Rel(prefix, absTarget)
+		if err != nil {
+			return false, fmt.Errorf("couldn't find relative path : %w", err)
+		}
+
+		if rel != ".." && !(len(rel) >= 3 && rel[:3] == "../") {
 			return true, nil
 		}
 	}
