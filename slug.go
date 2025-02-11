@@ -522,13 +522,13 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 	}
 
 	// Target falls within root.
-	rel, err := filepath.Rel(absRoot, absTarget)
+	rel, err := TargetWithinRoot(absRoot, absTarget)
 	if err != nil {
-		return false, fmt.Errorf("couldn't find relative path : %w", err)
-	}
-
-	if rel != ".." && !(len(rel) >= 3 && rel[:3] == "../") {
-		return true, nil
+		return false, err
+	} else {
+		if rel {
+			return true, nil
+		}
 	}
 
 	// The link target is outside of root. Check if it is allowed.
@@ -549,13 +549,14 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 			prefix += "/"
 		}
 
-		rel, err := filepath.Rel(prefix, absTarget)
+		// Target falls within root.
+		rel, err := TargetWithinRoot(prefix, absTarget)
 		if err != nil {
-			return false, fmt.Errorf("couldn't find relative path : %w", err)
-		}
-
-		if rel != ".." && !(len(rel) >= 3 && rel[:3] == "../") {
-			return true, nil
+			return false, err
+		} else {
+			if rel {
+				return true, nil
+			}
 		}
 	}
 
@@ -565,6 +566,17 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 			path, target,
 		),
 	}
+}
+
+func TargetWithinRoot(root string, target string) (bool, error) {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false, fmt.Errorf("couldn't find relative path : %w", err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return false, nil
+	}
+	return true, nil
 }
 
 // checkFileMode is used to examine an os.FileMode and determine if it should
