@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/go-slug/internal/escapingfs"
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
 	"github.com/hashicorp/go-slug/internal/unpackinfo"
 )
@@ -522,7 +523,8 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 	}
 
 	// Target falls within root.
-	rel, err := TargetWithinRoot(absRoot, absTarget)
+	rel, err := escapingfs.TargetWithinRoot(absRoot, absTarget)
+	fmt.Println("[INFO] rel : ", rel)
 	if err != nil {
 		return false, err
 	} else {
@@ -550,7 +552,7 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 		}
 
 		// Target falls within root.
-		rel, err := TargetWithinRoot(prefix, absTarget)
+		rel, err := escapingfs.TargetWithinRoot(prefix, absTarget)
 		if err != nil {
 			return false, err
 		} else {
@@ -566,17 +568,6 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 			path, target,
 		),
 	}
-}
-
-func TargetWithinRoot(root string, target string) (bool, error) {
-	rel, err := filepath.Rel(root, target)
-	if err != nil {
-		return false, fmt.Errorf("couldn't find relative path : %w", err)
-	}
-	if strings.HasPrefix(rel, "..") {
-		return false, nil
-	}
-	return true, nil
 }
 
 // checkFileMode is used to examine an os.FileMode and determine if it should
