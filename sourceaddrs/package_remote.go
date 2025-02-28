@@ -15,6 +15,9 @@ type RemotePackage struct {
 	// all relevant fields are comparable, so it's safe to compare
 	// RemotePackage using the == operator.
 	url url.URL
+
+	// NOTE: If a source address contains "userinfo" portion, it'll be captured here
+	userInfo url.Userinfo
 }
 
 // ParseRemotePackage parses a standalone remote package address, which is a
@@ -87,4 +90,8 @@ func (p RemotePackage) SourceType() string {
 // even though the Go type system cannot enforce that.
 func (p RemotePackage) URL() *url.URL {
 	return &p.url
+}
+
+func (p RemotePackage) UserInfo() *url.Userinfo {
+	return &p.userInfo
 }

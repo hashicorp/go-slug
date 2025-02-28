@@ -488,7 +488,7 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 		return "", fmt.Errorf("failed to create new package directory: %w", err)
 	}
 
-	response, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), workDir)
+	response, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), pkgAddr.UserInfo(), workDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch package: %w", err)
 	}

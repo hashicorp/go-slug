@@ -54,6 +54,7 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 		pkgRaw = matches[2]
 	}
 
+	var strippedUserInfo url.Userinfo
 	u, err := url.Parse(pkgRaw)
 	if err != nil {
 		return RemoteSource{}, fmt.Errorf("invalid URL syntax in %q: %w", pkgRaw, err)
@@ -62,7 +63,9 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 		return RemoteSource{}, fmt.Errorf("must contain an absolute URL with a scheme")
 	}
 	if u.User != nil {
-		return RemoteSource{}, fmt.Errorf("must not use username or password in URL portion")
+		strippedUserInfo = *u.User
+		u.User = nil
+		// return RemoteSource{}, fmt.Errorf("must not use username or password in URL portion")
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
@@ -81,7 +84,7 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 		return RemoteSource{}, fmt.Errorf("invalid URL query string syntax in %q: %w", pkgRaw, err)
 	}
 
-	return makeRemoteSource(sourceType, u, subPath)
+	return makeRemoteSource(sourceType, u, subPath, strippedUserInfo)
 }
 
 // MakeRemoteSource constructs a [RemoteSource] from its component parts.
@@ -98,10 +101,10 @@ func MakeRemoteSource(sourceType string, u *url.URL, subPath string) (RemoteSour
 
 	copyU := *u // shallow copy so we can safely modify
 
-	return makeRemoteSource(sourceType, &copyU, subPath)
+	return makeRemoteSource(sourceType, &copyU, subPath, url.Userinfo{})
 }
 
-func makeRemoteSource(sourceType string, u *url.URL, subPath string) (RemoteSource, error) {
+func makeRemoteSource(sourceType string, u *url.URL, subPath string, userInfo url.Userinfo) (RemoteSource, error) {
 	typeImpl, ok := remoteSourceTypes[sourceType]
 	if !ok {
 		if sourceType == u.Scheme {
@@ -122,6 +125,7 @@ func makeRemoteSource(sourceType string, u *url.URL, subPath string) (RemoteSour
 		pkg: RemotePackage{
 			sourceType: sourceType,
 			url:        *u,
+			userInfo:   userInfo,
 		},
 		subPath: subPath,
 	}, nil
