@@ -554,11 +554,12 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 		rel, err := escapingfs.TargetWithinRoot(prefix, absTarget)
 		if err != nil {
 			return false, err
-		} else {
-			if rel {
-				return true, nil
-			}
 		}
+
+		if rel {
+			return true, nil
+		}
+
 	}
 
 	return false, &IllegalSlugError{
