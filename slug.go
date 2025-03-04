@@ -524,13 +524,12 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 
 	// Target falls within root.
 	rel, err := escapingfs.TargetWithinRoot(absRoot, absTarget)
-	fmt.Println("[INFO] rel : ", rel)
 	if err != nil {
 		return false, err
-	} else {
-		if rel {
-			return true, nil
-		}
+	}
+
+	if rel {
+		return true, nil
 	}
 
 	// The link target is outside of root. Check if it is allowed.
