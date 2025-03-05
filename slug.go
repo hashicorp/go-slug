@@ -545,11 +545,6 @@ func (p *Packer) validSymlink(root, path, target string) (bool, error) {
 			return true, nil
 		}
 
-		// Prefix match of a directory is allowed.
-		if !strings.HasSuffix(prefix, "/") {
-			prefix += "/"
-		}
-
 		// Target falls within root.
 		rel, err := escapingfs.TargetWithinRoot(prefix, absTarget)
 		if err != nil {
