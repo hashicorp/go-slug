@@ -1,8 +1,8 @@
 ---
 name: test
 on: 
-  push:
-    branches: coverage-test
+  - push
+  - pull_request
 
 jobs:
   build:
