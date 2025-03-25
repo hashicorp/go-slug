@@ -468,7 +468,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			// has perms that don't allow overwriting. The file permissions will be restored
 			// once the file contents are copied.
 			if os.IsPermission(err) {
-				os.Chmod(info.Path, 0600)
+				_ = os.Chmod(info.Path, 0600)
 				fh, err = os.Create(info.Path)
 			}
 
