@@ -514,11 +514,14 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			// Write the header.
-			_ = tarW.WriteHeader(&tar.Header{
+			err = tarW.WriteHeader(&tar.Header{
 				Name:     "l",
 				Linkname: tc.target,
 				Typeflag: tar.TypeSymlink,
 			})
+			if err != nil {
+				t.Fatalf("failed to write the header: %v", err)
+			}
 
 			tarW.Close()
 			gzipW.Close()
@@ -676,12 +679,20 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	hdr.Mode = 0100000 | 0400
 	hdr.Size = int64(len(data))
 
-	_ = tarW.WriteHeader(&hdr)
-	_, _ = tarW.Write([]byte(data))
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, err := tarW.Write([]byte(data)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	// write it twice
-	_ = tarW.WriteHeader(&hdr)
-	_, _ = tarW.Write([]byte(data))
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, err := tarW.Write([]byte(data)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tarW.Close()
 	gzipW.Close()
@@ -759,7 +770,9 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				_ = tarW.WriteHeader(hdr)
+				if err := tarW.WriteHeader(hdr); err != nil {
+					t.Fatalf("err: %v", err)
+				}
 			}
 
 			tarW.Close()
@@ -823,7 +836,9 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	hdr.Name = "l"
 	hdr.Size = int64(0)
 
-	_ = tarW.WriteHeader(&hdr)
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tarW.Close()
 	gzipW.Close()
@@ -974,7 +989,9 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				_ = tarW.WriteHeader(hdr)
+				if err := tarW.WriteHeader(hdr); err != nil {
+					t.Fatalf("err: %v", err)
+				}
 			}
 
 			tarW.Close()
@@ -1160,9 +1177,11 @@ func TestUnpackEmptyName(t *testing.T) {
 
 	tw := tar.NewWriter(gw)
 
-	_ = tw.WriteHeader(&tar.Header{
+	if err := tw.WriteHeader(&tar.Header{
 		Typeflag: tar.TypeDir,
-	})
+	}); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tw.Close()
 	gw.Close()

@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Create a directory to unpack the slug contents into.
-	dst, err := os.MkdirTempr("", "slug")
+	dst, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		log.Fatal(err)
 	}
