@@ -732,8 +732,8 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			desc: "extended pax header",
 			headers: []*tar.Header{
 				{
-					Name:     "h",
-					Typeflag: tar.TypeXHeader,
+					Name:       "h",
+					PAXRecords: map[string]string{},
 				},
 			},
 		},
