@@ -10,3 +10,7 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Mac OS metadata
+._.DS_Store
+.DS_Store
