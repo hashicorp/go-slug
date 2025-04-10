@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -169,7 +168,7 @@ func TestPackWithoutIgnoring(t *testing.T) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 	}
@@ -236,7 +235,7 @@ func TestPack_symlinks(t *testing.T) {
 			tc.absolute, tc.external, tc.targetExists, tc.dereference)
 
 		t.Run(desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -274,7 +273,7 @@ func TestPack_symlinks(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
 					t.Fatal(err)
 				}
-				if err := ioutil.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
+				if err := os.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -432,7 +431,7 @@ func TestAllowSymlinkTarget(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run("Pack: "+tc.desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -495,7 +494,7 @@ func TestAllowSymlinkTarget(t *testing.T) {
 		})
 
 		t.Run("Unpack: "+tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
@@ -515,11 +514,14 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			// Write the header.
-			tarW.WriteHeader(&tar.Header{
+			err = tarW.WriteHeader(&tar.Header{
 				Name:     "l",
 				Linkname: tc.target,
 				Typeflag: tar.TypeSymlink,
 			})
+			if err != nil {
+				t.Fatalf("failed to write the header: %v", err)
+			}
 
 			tarW.Close()
 			gzipW.Close()
@@ -532,7 +534,7 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -567,7 +569,7 @@ func TestUnpack(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir("", "slug")
+	dst, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -650,7 +652,7 @@ func TestUnpack_HeaderOrdering(t *testing.T) {
 }
 
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
@@ -677,12 +679,20 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	hdr.Mode = 0100000 | 0400
 	hdr.Size = int64(len(data))
 
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, err := tarW.Write([]byte(data)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	// write it twice
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, err := tarW.Write([]byte(data)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tarW.Close()
 	gzipW.Close()
@@ -695,7 +705,7 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -722,8 +732,8 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			desc: "extended pax header",
 			headers: []*tar.Header{
 				{
-					Name:     "h",
-					Typeflag: tar.TypeXHeader,
+					Name:       "h",
+					PAXRecords: map[string]string{},
 				},
 			},
 		},
@@ -740,7 +750,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
@@ -760,7 +770,9 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				if err := tarW.WriteHeader(hdr); err != nil {
+					t.Fatalf("err: %v", err)
+				}
 			}
 
 			tarW.Close()
@@ -774,7 +786,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -799,7 +811,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 // ensure Unpack returns an error when an unsupported file type is encountered
 // in an archive, rather than silently discarding the data.
 func TestUnpackErrorOnUnhandledType(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
@@ -824,7 +836,9 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	hdr.Name = "l"
 	hdr.Size = int64(0)
 
-	tarW.WriteHeader(&hdr)
+	if err := tarW.WriteHeader(&hdr); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tarW.Close()
 	gzipW.Close()
@@ -837,7 +851,7 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -955,7 +969,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
 
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
@@ -975,7 +989,9 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				if err := tarW.WriteHeader(hdr); err != nil {
+					t.Fatalf("err: %v", err)
+				}
 			}
 
 			tarW.Close()
@@ -989,7 +1005,7 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -1025,7 +1041,7 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
@@ -1067,7 +1083,7 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -1161,9 +1177,11 @@ func TestUnpackEmptyName(t *testing.T) {
 
 	tw := tar.NewWriter(gw)
 
-	tw.WriteHeader(&tar.Header{
+	if err := tw.WriteHeader(&tar.Header{
 		Typeflag: tar.TypeDir,
-	})
+	}); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	tw.Close()
 	gw.Close()
@@ -1172,7 +1190,7 @@ func TestUnpackEmptyName(t *testing.T) {
 		t.Fatal("unable to create tar properly")
 	}
 
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
@@ -1210,7 +1228,7 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 
