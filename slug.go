@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/go-slug/internal/copyUtil"
 	"github.com/hashicorp/go-slug/internal/escapingfs"
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
 	"github.com/hashicorp/go-slug/internal/unpackinfo"
@@ -478,7 +479,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 		}
 
 		// Copy the contents of the file.
-		_, err = io.Copy(fh, untar)
+		err = copyUtil.CopyWithLimit(fh, untar)
 		fh.Close()
 		if err != nil {
 			return fmt.Errorf("failed to copy slug file %q: %w", info.Path, err)
