@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	chunkSize = 4 * 1024 * 1024 // 4MB per chunk
-	maxChunks = 100             // Up to 400MB
+	chunkSize = 1 * 1024 * 1024 // 4MB per chunk
+	maxChunks = 50              // Up to 400MB
 )
 
 // copyWithLimit copies from a tar.Reader to a file in limited-size chunks
@@ -20,6 +20,8 @@ func CopyWithLimit(dst io.Writer, src io.Reader) error {
 		}
 
 		n, err := io.CopyN(dst, src, chunkSize)
+		totalChunks++
+
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break // Copy complete
@@ -30,8 +32,6 @@ func CopyWithLimit(dst io.Writer, src io.Reader) error {
 		if n < chunkSize {
 			break // No more data left
 		}
-
-		totalChunks++
 	}
 
 	return nil
