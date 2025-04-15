@@ -479,6 +479,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Copy the contents of the file under 10MB.
 		_, err = io.CopyN(fh, untar, 10*1024*1024)
+		fh.Close()
 		if err != nil && err != io.EOF {
 			return fmt.Errorf("failed to copy slug file %q: %w", info.Path, err)
 		}
