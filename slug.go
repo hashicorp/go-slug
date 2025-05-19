@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/hashicorp/go-slug/internal/escapingfs"
@@ -585,5 +586,8 @@ func checkFileMode(m os.FileMode) (keep, body bool) {
 // isSymlink checks if the provider file mode is a symlink
 // as of Go 1.23 Windows files with linked/mounted modes are considered irregular
 func isSymlink(m os.FileMode) bool {
-	return m&os.ModeSymlink != 0 || m&os.ModeIrregular != 0
+	if runtime.GOOS == "windows" {
+		return m&os.ModeSymlink != 0 || m&os.ModeIrregular != 0
+	}
+	return m&os.ModeSymlink != 0
 }
