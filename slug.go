@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/hashicorp/go-slug/internal/escapingfs"
@@ -153,7 +152,7 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 	}
 
 	// Check if the root (src) is a symlink
-	if isSymlink(info.Mode()) {
+	if info.Mode()&os.ModeSymlink != 0 {
 		src, err = os.Readlink(src)
 		if err != nil {
 			return nil, err
@@ -259,7 +258,7 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 			header.Typeflag = tar.TypeReg
 			header.Size = info.Size()
 
-		case isSymlink(info.Mode()):
+		case fm&os.ModeSymlink != 0:
 			// Read the symlink file to find the destination.
 			target, err := os.Readlink(path)
 			if err != nil {
@@ -360,7 +359,7 @@ func (p *Packer) resolveExternalLink(root string, path string) (*externalSymlink
 	}
 
 	// Recurse if the symlink resolves to another symlink
-	if isSymlink(info.Mode()) {
+	if info.Mode()&os.ModeSymlink != 0 {
 		return p.resolveExternalLink(root, absTarget)
 	}
 
@@ -576,18 +575,9 @@ func checkFileMode(m os.FileMode) (keep, body bool) {
 	case m.IsRegular():
 		return true, true
 
-	case isSymlink(m):
+	case m&os.ModeSymlink != 0:
 		return true, false
 	}
 
 	return false, false
-}
-
-// isSymlink checks if the provider file mode is a symlink
-// as of Go 1.23 Windows files with linked/mounted modes are considered irregular
-func isSymlink(m os.FileMode) bool {
-	if runtime.GOOS == "windows" {
-		return m&os.ModeSymlink != 0 || m&os.ModeIrregular != 0
-	}
-	return m&os.ModeSymlink != 0
 }
