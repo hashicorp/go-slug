@@ -2,6 +2,8 @@ module github.com/hashicorp/go-slug
 
 go 1.24
 
+godebug winsymlink=0
+
 require (
 	github.com/apparentlymart/go-versions v1.0.1
 	github.com/google/go-cmp v0.5.9
