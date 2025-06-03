@@ -8,8 +8,7 @@
 
 ### Security
 
-v0.16.6
-## Unreleased
+## v0.16.6
 
 ### Improvements
 IND-2704 Coverage test by @KaushikiAnand in #85
@@ -22,5 +21,3 @@ Pin action refs to latest trusted by TSCCR by @hashicorp-tsccr in #89
 
 ### Fixed
 irregular mode file checks for Windows symlinks by @notchairmk in #79
-
-### Security
