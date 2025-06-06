@@ -162,7 +162,12 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			return "", false, nil
 		}
 
-		parts := strings.Split(given, "/")
+		url, query, _ := strings.Cut(given, "?")
+		if len(query) > 0 {
+			query = "?" + query
+		}
+
+		parts := strings.Split(url, "/")
 		if len(parts) < 3 {
 			return "", false, fmt.Errorf("GitHub.com shorthand addresses must start with github.com/organization/repository")
 		}
@@ -178,7 +183,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			urlStr += "//" + strings.Join(parts[3:], "/")
 		}
 
-		return "git::" + urlStr, true, nil
+		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
 	},
 	func(given string) (string, bool, error) {
 		// Allows a gitlab.com repository to be presented in a scheme-less
@@ -195,7 +200,12 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			return "", false, nil
 		}
 
-		parts := strings.Split(given, "/")
+		url, query, _ := strings.Cut(given, "?")
+		if len(query) > 0 {
+			query = "?" + query
+		}
+
+		parts := strings.Split(url, "/")
 		if len(parts) < 3 {
 			return "", false, fmt.Errorf("GitLab.com shorthand addresses must start with gitlab.com/organization/repository")
 		}
@@ -217,7 +227,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			// refer to a Git repository.
 		}
 
-		return "git::" + urlStr, true, nil
+		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
 	},
 }
 
