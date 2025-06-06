@@ -242,6 +242,25 @@ func TestParseSource(t *testing.T) {
 			},
 		},
 		{
+			Given: "github.com/hashicorp/stacks?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git?ref=v4.8.0"),
+				},
+			},
+		},
+		{
+			Given: "github.com/hashicorp/stacks/bleep?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git?ref=v4.8.0"),
+				},
+				subPath: "bleep",
+			},
+		},
+		{
 			Given: "gitlab.com/hashicorp/go-slug.git",
 			Want: RemoteSource{
 				pkg: RemotePackage{
@@ -256,6 +275,15 @@ func TestParseSource(t *testing.T) {
 				pkg: RemotePackage{
 					sourceType: "git",
 					url:        *mustParseURL("https://gitlab.com/hashicorp/go-slug.git"),
+				},
+			},
+		},
+		{
+			Given: "gitlab.com/hashicorp/stacks?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git?ref=v4.8.0"),
 				},
 			},
 		},
