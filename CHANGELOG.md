@@ -1,12 +1,8 @@
-## Unreleased
-
-### Improvements
-
-### Changes
+## v0.16.7
 
 ### Fixed
 
-### Security
+- Support query paths in Github and Gitlab sources addresses. ([#95](https://github.com/hashicorp/go-slug/pull/95))
 
 ## v0.16.6
 
