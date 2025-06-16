@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -483,7 +482,7 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 	// We'll eventually name our local directory after a checksum of its
 	// content, but we don't know its content yet so we'll use a temporary
 	// name while we work on getting it populated.
-	workDir, err := ioutil.TempDir(b.targetDir, ".tmp-")
+	workDir, err := os.MkdirTemp(b.targetDir, ".tmp-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create new package directory: %w", err)
 	}
@@ -737,7 +736,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 		if err != nil {
 			return fmt.Errorf("failed to stat %q: %w", realPath, err)
 		}
-		if !(lInfo.Mode().IsRegular() || lInfo.Mode().IsDir()) {
+		if !lInfo.Mode().IsRegular() && !lInfo.Mode().IsDir() {
 			return fmt.Errorf("module package path %q is not a regular file or directory", relPath)
 		}
 

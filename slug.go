@@ -320,7 +320,7 @@ func (p *Packer) packWalkFn(root, src, dst string, tarW *tar.Writer, meta *Meta,
 		if err != nil {
 			return fmt.Errorf("failed opening file %q for archiving: %w", path, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		size, err := io.Copy(tarW, f)
 		if err != nil {
@@ -469,7 +469,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			// has perms that don't allow overwriting. The file permissions will be restored
 			// once the file contents are copied.
 			if os.IsPermission(err) {
-				os.Chmod(info.Path, 0600)
+				_ = os.Chmod(info.Path, 0600)
 				fh, err = os.Create(info.Path)
 			}
 
@@ -480,7 +480,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Copy the contents of the file.
 		_, err = io.Copy(fh, untar)
-		fh.Close()
+		_ = fh.Close()
 		if err != nil {
 			return fmt.Errorf("failed to copy slug file %q: %w", info.Path, err)
 		}

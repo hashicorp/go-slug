@@ -14,7 +14,7 @@ import (
 func parseIgnoreFile(rootPath string) *ignorefiles.Ruleset {
 	// Look for .terraformignore at our root path/src
 	file, err := os.Open(filepath.Join(rootPath, ".terraformignore"))
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// If there's any kind of file error, punt and use the default ignore patterns
 	if err != nil {

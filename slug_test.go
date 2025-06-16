@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -169,7 +168,7 @@ func TestPackWithoutIgnoring(t *testing.T) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 	}
@@ -236,11 +235,11 @@ func TestPack_symlinks(t *testing.T) {
 			tc.absolute, tc.external, tc.targetExists, tc.dereference)
 
 		t.Run(desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(td)
+			defer func() { _ = os.RemoveAll(td) }()
 
 			internal := filepath.Join(td, "internal")
 			if err := os.MkdirAll(internal, 0700); err != nil {
@@ -274,7 +273,7 @@ func TestPack_symlinks(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
 					t.Fatal(err)
 				}
-				if err := ioutil.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
+				if err := os.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -432,11 +431,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run("Pack: "+tc.desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(td)
+			defer func() { _ = os.RemoveAll(td) }()
 
 			// Make the symlink.
 			if err := os.Symlink(tc.target, filepath.Join(td, "sym")); err != nil {
@@ -495,11 +494,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 		})
 
 		t.Run("Unpack: "+tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -515,15 +514,15 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			// Write the header.
-			tarW.WriteHeader(&tar.Header{
+			_ = tarW.WriteHeader(&tar.Header{
 				Name:     "l",
 				Linkname: tc.target,
 				Typeflag: tar.TypeSymlink,
 			})
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -532,11 +531,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Unpack.
 			p, err := NewPacker(AllowSymlinkTarget(tc.allow))
@@ -567,11 +566,11 @@ func TestUnpack(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir("", "slug")
+	dst, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it.
 	if err := Unpack(slug, dst); err != nil {
@@ -650,11 +649,11 @@ func TestUnpack_HeaderOrdering(t *testing.T) {
 }
 
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	in := filepath.Join(dir, "slug.tar.gz")
 
 	// Create the output file
@@ -677,16 +676,16 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	hdr.Mode = 0100000 | 0400
 	hdr.Size = int64(len(data))
 
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	_ = tarW.WriteHeader(&hdr)
+	_, _ = tarW.Write([]byte(data))
 
 	// write it twice
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	_ = tarW.WriteHeader(&hdr)
+	_, _ = tarW.Write([]byte(data))
 
-	tarW.Close()
-	gzipW.Close()
-	wfh.Close()
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
 
 	// Open the slug file for reading.
 	fh, err := os.Open(in)
@@ -695,11 +694,11 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it.
 	if err := Unpack(fh, dst); err != nil {
@@ -740,11 +739,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -760,12 +759,12 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				_ = tarW.WriteHeader(hdr)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -774,11 +773,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it.
 			if err := Unpack(fh, dst); err != nil {
@@ -791,7 +790,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected file not to exist: %q", path)
 			}
-			defer fh.Close()
+			defer func() { _ = fh.Close() }()
 		})
 	}
 }
@@ -799,11 +798,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 // ensure Unpack returns an error when an unsupported file type is encountered
 // in an archive, rather than silently discarding the data.
 func TestUnpackErrorOnUnhandledType(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	in := filepath.Join(dir, "slug.tar.gz")
 
 	// Create the output file
@@ -824,11 +823,11 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	hdr.Name = "l"
 	hdr.Size = int64(0)
 
-	tarW.WriteHeader(&hdr)
+	_ = tarW.WriteHeader(&hdr)
 
-	tarW.Close()
-	gzipW.Close()
-	wfh.Close()
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
 
 	// Open the slug file for reading.
 	fh, err := os.Open(in)
@@ -837,11 +836,11 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it, which should fail
 	if err := Unpack(fh, dst); err == nil {
@@ -955,11 +954,11 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
 
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -975,12 +974,12 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				_ = tarW.WriteHeader(hdr)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -989,11 +988,11 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it, which should fail
 			var e *IllegalSlugError
@@ -1025,11 +1024,11 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -1056,9 +1055,9 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 				t.Fatalf("err: %v", err)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -1067,11 +1066,11 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it, which should fail
 			var e *IllegalSlugError
@@ -1161,22 +1160,22 @@ func TestUnpackEmptyName(t *testing.T) {
 
 	tw := tar.NewWriter(gw)
 
-	tw.WriteHeader(&tar.Header{
+	_ = tw.WriteHeader(&tar.Header{
 		Typeflag: tar.TypeDir,
 	})
 
-	tw.Close()
-	gw.Close()
+	_ = tw.Close()
+	_ = gw.Close()
 
 	if buf.Len() == 0 {
 		t.Fatal("unable to create tar properly")
 	}
 
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	err = Unpack(&buf, dir)
 	if err != nil {
@@ -1210,7 +1209,7 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 
@@ -1364,7 +1363,7 @@ func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarg
 		}
 	}
 
-	if !((expectedMode == 0 && info.Mode().IsRegular()) || info.Mode()&expectedMode == 0) {
+	if expectedMode != 0 || !info.Mode().IsRegular() && info.Mode()&expectedMode != 0 {
 		t.Fatalf("wrong file mode for %q", dst)
 	}
 
@@ -1372,7 +1371,7 @@ func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarg
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }()
 
 	raw := make([]byte, info.Size())
 	if _, err := fh.Read(raw); err != nil {

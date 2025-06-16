@@ -101,7 +101,7 @@ func (httpSourceType) PrepareURL(u *url.URL) error {
 		u.RawQuery = qs.Encode()
 	} else {
 		p := u.EscapedPath()
-		if !(strings.HasSuffix(p, ".tar.gz") || strings.HasSuffix(p, ".tgz")) {
+		if !strings.HasSuffix(p, ".tar.gz") && !strings.HasSuffix(p, ".tgz") {
 			return fmt.Errorf("a HTTPS URL's path must end with either .tar.gz or .tgz")
 		}
 	}
