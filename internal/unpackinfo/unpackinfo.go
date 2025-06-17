@@ -112,7 +112,7 @@ func (i UnpackInfo) IsTypeX() bool {
 
 // IsRegular describes whether the file being unpacked is a regular file
 func (i UnpackInfo) IsRegular() bool {
-	return i.Typeflag == tar.TypeReg || i.Typeflag == tar.TypeRegA
+	return i.Typeflag == tar.TypeReg
 }
 
 // RestoreInfo changes the file mode and timestamps for the given UnpackInfo data

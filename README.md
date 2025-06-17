@@ -31,7 +31,6 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -49,7 +48,7 @@ func main() {
 	}
 
 	// Create a directory to unpack the slug contents into.
-	dst, err := ioutil.TempDir("", "slug")
+	dst, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		log.Fatal(err)
 	}

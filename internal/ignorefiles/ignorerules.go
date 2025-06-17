@@ -55,7 +55,7 @@ func LoadPackageIgnoreRules(packageDir string) (*Ruleset, error) {
 		}
 		return nil, fmt.Errorf("cannot read .terraformignore: %s", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	ret, err := ParseIgnoreFileContent(file)
 	if err != nil {

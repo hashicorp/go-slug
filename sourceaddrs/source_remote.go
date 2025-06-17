@@ -68,10 +68,11 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 	u.Scheme = strings.ToLower(u.Scheme)
 	sourceType = strings.ToLower(sourceType)
 
-	if sourceType == "" {
+	switch sourceType {
+	case "":
 		// sourceType defaults to the URL scheme if not explicitly set.
 		sourceType = u.Scheme
-	} else if sourceType == u.Scheme {
+	case u.Scheme:
 		// This catches weirdo constructions like: https::https://example.com/
 		return RemoteSource{}, fmt.Errorf("don't specify redundant %q source type for %q URL", sourceType, u.Scheme)
 	}

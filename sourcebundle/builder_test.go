@@ -1025,13 +1025,13 @@ func copyDir(dst, src string) error {
 		if err != nil {
 			return err
 		}
-		defer srcF.Close()
+		defer func() { _ = srcF.Close() }()
 
 		dstF, err := os.Create(dstPath)
 		if err != nil {
 			return err
 		}
-		defer dstF.Close()
+		defer func() { _ = dstF.Close() }()
 
 		if _, err := io.Copy(dstF, srcF); err != nil {
 			return err
