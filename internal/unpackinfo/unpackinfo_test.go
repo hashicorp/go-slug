@@ -189,6 +189,33 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatalf("expected nil, got %q", err)
 		}
 	})
+
+	t.Run("valid dst filename starting with ..", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "..file.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+
+	t.Run("valid dst directory starting with ..", func(t *testing.T) {
+		dst := t.TempDir()
+
+		_, err := NewUnpackInfo(dst, &tar.Header{
+			Name:     "..folder/file.txt",
+			Typeflag: tar.TypeSymlink,
+		})
+
+		if err != nil {
+			t.Fatalf("expected nil, got %q", err)
+		}
+	})
+
 	t.Run("valid empty path with destination without the / sufix", func(t *testing.T) {
 		dst := t.TempDir()
 		dst = strings.TrimSuffix(dst, "/")
