@@ -5,6 +5,7 @@ package escapingfs
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -14,7 +15,8 @@ func TargetWithinRoot(root string, target string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("couldn't find relative path : %w", err)
 	}
-	if strings.HasPrefix(rel, "..") {
+	components := strings.Split(rel, string(os.PathSeparator))
+	if len(components) > 0 && components[0] == ".." {
 		return false, nil
 	}
 	return true, nil
