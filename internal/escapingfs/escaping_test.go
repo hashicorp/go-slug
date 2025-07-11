@@ -40,6 +40,18 @@ func TestTargetWithinRoot(t *testing.T) {
 			target:   tempDir,
 			expected: false,
 		},
+		{
+			name:     "Target within root but target filename starts with ..",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Target within root but target directory starts with ..",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..subdir", "file.txt"),
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
