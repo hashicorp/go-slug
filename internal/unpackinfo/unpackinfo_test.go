@@ -303,6 +303,151 @@ func TestNewUnpackInfo(t *testing.T) {
 	})
 }
 
+// TestNewUnpackInfoPathTraversalVariants tests different path traversal attack vectors
+func TestNewUnpackInfoPathTraversalVariants(t *testing.T) {
+	t.Parallel()
+
+	dst := t.TempDir()
+
+	tests := []struct {
+		name     string
+		filename string
+		wantErr  bool
+		errMsg   string
+	}{
+		{
+			name:     "simple parent traversal",
+			filename: "../outside",
+			wantErr:  true,
+			errMsg:   "traversal with \"..\"",
+		},
+		{
+			name:     "multiple parent traversal",
+			filename: "../../outside",
+			wantErr:  true,
+			errMsg:   "traversal with \"..\"",
+		},
+		{
+			name:     "start with ./ followed with ..",
+			filename: "./../../outside",
+			wantErr:  true,
+			errMsg:   "traversal with \"..\"",
+		},
+		{
+			name:     "mixed path with traversal",
+			filename: "subdir/../../../outside",
+			wantErr:  true,
+			errMsg:   "traversal with \"..\"",
+		},
+		{
+			name:     "absolute path gets cleaned to relative",
+			filename: "/etc/passwd",
+			wantErr:  false,
+		},
+		{
+			name:     "valid filename starting with dots",
+			filename: "..hidden-file",
+			wantErr:  false,
+		},
+		{
+			name:     "valid directory starting with dots",
+			filename: "..hidden-dir/file.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "valid path with dots in middle",
+			filename: "sub..dir/file.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "clean path within destination",
+			filename: "valid/path/file.txt",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewUnpackInfo(dst, &tar.Header{
+				Name:     tt.filename,
+				Typeflag: tar.TypeReg,
+			})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error for filename %q, got nil", tt.filename)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for valid filename %q: %v", tt.filename, err)
+				}
+			}
+		})
+	}
+}
+
+// TestNewUnpackInfoDestinationVariants tests different destination path formats
+func TestNewUnpackInfoDestinationVariants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		destination string
+		filename    string
+		wantErr     bool
+		errMsg      string
+	}{
+		{
+			name:        "empty destination",
+			destination: "",
+			filename:    "file.txt",
+			wantErr:     true,
+			errMsg:      "empty destination is not allowed",
+		},
+		{
+			name:        "destination with trailing slash",
+			destination: t.TempDir() + "/",
+			filename:    "file.txt",
+			wantErr:     false,
+		},
+		{
+			name:        "destination without trailing slash",
+			destination: t.TempDir(),
+			filename:    "file.txt",
+			wantErr:     false,
+		},
+		{
+			name:        "destination with dot prefix",
+			destination: "./" + t.TempDir(),
+			filename:    "file.txt",
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewUnpackInfo(tt.destination, &tar.Header{
+				Name:     tt.filename,
+				Typeflag: tar.TypeReg,
+			})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error for destination %q, got nil", tt.destination)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for destination %q: %v", tt.destination, err)
+				}
+			}
+		})
+	}
+}
+
 func TestUnpackInfo_RestoreInfo(t *testing.T) {
 	root := t.TempDir()
 
