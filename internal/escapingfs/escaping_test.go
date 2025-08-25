@@ -116,7 +116,7 @@ func TestTargetWithinRoot(t *testing.T) {
 			name:     "Target with redundant path elements escaping",
 			root:     tempDir,
 			target:   filepath.Join(tempDir, "..", tempDir, "file.txt"),
-			expected: false, // Contains .. so should be rejected
+			expected: false,
 		},
 		{
 			name:     "Same path with different representations",
