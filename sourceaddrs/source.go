@@ -48,6 +48,12 @@ func ParseSource(given string) (Source, error) {
 			return nil, fmt.Errorf("invalid module registry source address %q: %w", given, err)
 		}
 		return ret, nil
+	case looksLikeComponentSource(given):
+		ret, err := ParseComponentSource(given)
+		if err != nil {
+			return nil, fmt.Errorf("invalid component registry source address %q: %w", given, err)
+		}
+		return ret, nil
 	default:
 		// If it's neither a local source nor a module registry source then
 		// we'll assume it's intended to be a remote source.
@@ -108,6 +114,16 @@ func ResolveRelativeSource(a, b Source) (Source, error) {
 			pkg:     a.pkg,
 			subPath: newSub,
 		}, nil
+	case ComponentSource:
+		aSub := a.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return ComponentSource{
+			pkg:     a.pkg,
+			subPath: newSub,
+		}, nil
 	case RemoteSource:
 		aSub := a.subPath
 		newSub, err := joinSubPath(aSub, bRaw)
@@ -140,6 +156,8 @@ func SourceFilename(addr Source) string {
 	case RemoteSource:
 		return path.Base(addr.SubPath())
 	case RegistrySource:
+		return path.Base(addr.SubPath())
+	case ComponentSource:
 		return path.Base(addr.SubPath())
 	default:
 		// above should be exhaustive for all source types

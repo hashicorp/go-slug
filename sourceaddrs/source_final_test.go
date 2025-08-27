@@ -75,6 +75,11 @@ func TestResolveRelativeFinalSource(t *testing.T) {
 			Rel:  MustParseSource("../").(FinalSource),
 			Want: MustParseSource("example.com/foo/bar/baz//beep").(RegistrySource).Versioned(onePointOh),
 		},
+		{ // Test for component sources
+			Base: MustParseSource("example.com/foo/bar//beep/boop").(ComponentSource).Versioned(onePointOh),
+			Rel:  MustParseSource("../").(FinalSource),
+			Want: MustParseSource("example.com/foo/bar//beep").(ComponentSource).Versioned(onePointOh),
+		},
 	}
 
 	for _, test := range tests {
@@ -139,6 +144,23 @@ func TestParseFinalSource(t *testing.T) {
 			Want: MustParseSource("example.com/foo/bar/baz").(RegistrySource).Versioned(onePointOh),
 		},
 		{
+			Addr: "gitlab.com/hashicorp/go-slug/bleep@1.0.0",
+			Want: MustParseSource("gitlab.com/hashicorp/go-slug/bleep").(RegistrySource).Versioned(onePointOh),
+		},
+		// component sources
+		{ // without hostname
+			Addr: "foo/bar@1.0.0",
+			Want: MustParseSource("foo/bar").(ComponentSource).Versioned(onePointOh),
+		},
+		{ // with hostname and subpath
+			Addr: "example.com/foo/bar@1.0.0//beep",
+			Want: MustParseSource("example.com/foo/bar//beep").(ComponentSource).Versioned(onePointOh),
+		},
+		{ // with hostname
+			Addr: "example.com/foo/bar@1.0.0",
+			Want: MustParseSource("example.com/foo/bar").(ComponentSource).Versioned(onePointOh),
+		},
+		{// should fail
 			Addr: "gitlab.com/hashicorp/go-slug/bleep@1.0.0",
 			Want: MustParseSource("gitlab.com/hashicorp/go-slug/bleep").(RegistrySource).Versioned(onePointOh),
 		},
