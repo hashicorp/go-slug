@@ -181,7 +181,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + strings.Join(parts[3:], "/")
+			urlStr += "//" + joinNonEmpty(parts[3:], "/")
 		}
 
 		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
@@ -219,7 +219,9 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + strings.Join(parts[3:], "/")
+			// The remaining parts will become the sub-path portion, since
+			// the repository as a whole is the source package.
+			urlStr += "//" + joinNonEmpty(parts[3:], "/")
 			// NOTE: We can't actually get here if there are exactly four
 			// parts, because gitlab.com is also a Terraform module registry
 			// and so gitlab.com/a/b/c must be interpreted as a registry
@@ -230,6 +232,17 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 
 		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
 	},
+}
+
+func joinNonEmpty(parts []string, sep string) string {
+	filtered := []string{}
+	for _, p := range parts {
+		if p != "" {
+			filtered = append(filtered, p)
+		}
+	}
+
+	return strings.Join(filtered, sep)
 }
 
 var remoteSourceTypePattern = regexp.MustCompile(`^([A-Za-z0-9]+)::(.+)$`)
