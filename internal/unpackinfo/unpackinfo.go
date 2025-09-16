@@ -181,8 +181,6 @@ func (i UnpackInfo) restoreNormal() error {
 	return nil
 }
 
-// Root-based secure restore methods
-
 func (i UnpackInfo) restoreDirectoryWithRoot(root *os.Root, relPath string) error {
 	if err := root.Chmod(relPath, i.OriginalMode); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
