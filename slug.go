@@ -390,6 +390,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 	// for more details about how tar attempts to preserve file metadata.
 	directoriesExtracted := []unpackinfo.UnpackInfo{}
 
+	// Create a root for secure file operations - this prevents access outside dst
+	root, err := os.OpenRoot(dst)
+	if err != nil {
+		return fmt.Errorf("failed to open root directory %q: %w", dst, err)
+	}
+	defer root.Close()
+
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)
 	if err != nil {
@@ -413,36 +420,37 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 		if header.Name == "" {
 			continue
 		}
+		header.Name = filepath.Clean(header.Name)
 
 		info, err := unpackinfo.NewUnpackInfo(dst, header)
 		if err != nil {
 			return &IllegalSlugError{Err: err}
 		}
 
-		// Make the directories to the path.
-		dir := filepath.Dir(info.Path)
-
-		// Timestamps and permissions will be restored after all files are extracted.
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %q: %w", dir, err)
+		// Make the directories to the path using root for security.
+		dir := filepath.Dir(header.Name)
+		if dir != "." {
+			// Timestamps and permissions will be restored after all files are extracted.
+			if err := root.MkdirAll(dir, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %q: %w", dir, err)
+			}
 		}
 
 		// Handle symlinks, directories, non-regular files
 		if info.IsSymlink() {
 
 			if ok, err := p.validSymlink(dst, header.Name, header.Linkname); ok {
-				// Create the symlink.
-				headerName := filepath.Clean(header.Name)
+				// Create the symlink using root for security.
 				headerLinkname := filepath.Clean(header.Linkname)
-				if err = os.Symlink(headerLinkname, info.Path); err != nil {
+				if err = root.Symlink(headerLinkname, header.Name); err != nil {
 					return fmt.Errorf("failed creating symlink (%q -> %q): %w",
-						headerName, headerLinkname, err)
+						header.Name, headerLinkname, err)
 				}
 			} else {
 				return err
 			}
 
-			if err := info.RestoreInfo(); err != nil {
+			if err := info.RestoreInfoWithRoot(root, dst); err != nil {
 				return err
 			}
 
@@ -461,16 +469,16 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			continue
 		}
 
-		// Open a handle to the destination.
-		fh, err := os.Create(info.Path)
+		// Open a handle to the destination using root for security.
+		fh, err := root.Create(header.Name)
 		if err != nil {
 			// This mimics tar's behavior wrt the tar file containing duplicate files
 			// and it allowing later ones to clobber earlier ones even if the file
 			// has perms that don't allow overwriting. The file permissions will be restored
 			// once the file contents are copied.
 			if os.IsPermission(err) {
-				_ = os.Chmod(info.Path, 0600)
-				fh, err = os.Create(info.Path)
+				_ = root.Chmod(header.Name, 0600)
+				fh, err = root.Create(header.Name)
 			}
 
 			if err != nil {
@@ -485,13 +493,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 			return fmt.Errorf("failed to copy slug file %q: %w", info.Path, err)
 		}
 
-		if err := info.RestoreInfo(); err != nil {
+		if err := info.RestoreInfoWithRoot(root, dst); err != nil {
 			return err
 		}
 	}
 
 	for _, dir := range directoriesExtracted {
-		if err := dir.RestoreInfo(); err != nil {
+		if err := dir.RestoreInfoWithRoot(root, dst); err != nil {
 			return err
 		}
 	}

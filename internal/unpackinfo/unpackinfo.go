@@ -130,6 +130,28 @@ func (i UnpackInfo) RestoreInfo() error {
 	}
 }
 
+// RestoreInfoWithRoot changes the file mode and timestamps for the given UnpackInfo data
+// using os.Root for enhanced security to ensure operations stay within the destination
+func (i UnpackInfo) RestoreInfoWithRoot(root *os.Root, dst string) error {
+	// Calculate relative path from dst to i.Path for Root operations
+	relPath, err := filepath.Rel(dst, i.Path)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %w", err)
+	}
+
+	switch {
+	case i.IsDirectory():
+		return i.restoreDirectoryWithRoot(root, relPath)
+	case i.IsSymlink():
+		if CanMaintainSymlinkTimestamps() {
+			return i.restoreSymlinkWithRoot(root, relPath)
+		}
+		return nil
+	default: // Normal file
+		return i.restoreNormalWithRoot(root, relPath)
+	}
+}
+
 func (i UnpackInfo) restoreDirectory() error {
 	if err := os.Chmod(i.Path, i.OriginalMode); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
@@ -154,6 +176,39 @@ func (i UnpackInfo) restoreNormal() error {
 	}
 
 	if err := os.Chtimes(i.Path, i.OriginalAccessTime, i.OriginalModTime); err != nil {
+		return fmt.Errorf("failed setting times on %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+// Root-based secure restore methods
+
+func (i UnpackInfo) restoreDirectoryWithRoot(root *os.Root, relPath string) error {
+	if err := root.Chmod(relPath, i.OriginalMode); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
+	}
+
+	if err := root.Chtimes(relPath, i.OriginalAccessTime, i.OriginalModTime); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed setting times on directory %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+func (i UnpackInfo) restoreSymlinkWithRoot(root *os.Root, relPath string) error {
+	// Note: Go 1.25's os.Root doesn't have Lchtimes, so we fall back to the original method
+	// This is a limitation but still provides some security benefit for other operations
+	if err := i.Lchtimes(); err != nil {
+		return fmt.Errorf("failed setting times on symlink %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+func (i UnpackInfo) restoreNormalWithRoot(root *os.Root, relPath string) error {
+	if err := root.Chmod(relPath, i.OriginalMode); err != nil {
+		return fmt.Errorf("failed setting permissions on %q: %w", i.Path, err)
+	}
+
+	if err := root.Chtimes(relPath, i.OriginalAccessTime, i.OriginalModTime); err != nil {
 		return fmt.Errorf("failed setting times on %q: %w", i.Path, err)
 	}
 	return nil

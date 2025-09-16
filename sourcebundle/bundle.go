@@ -59,7 +59,14 @@ func OpenDir(baseDir string) (*Bundle, error) {
 		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
 	}
 
-	manifestSrc, err := os.ReadFile(filepath.Join(rootDir, manifestFilename))
+	// Use os.Root for secure file access within the bundle directory
+	bundleRoot, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open bundle root directory %q: %w", rootDir, err)
+	}
+	defer bundleRoot.Close()
+
+	manifestSrc, err := bundleRoot.ReadFile(manifestFilename)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read manifest: %w", err)
 	}
