@@ -52,7 +52,7 @@ func LoadPackageIgnoreRules(packageDir string) (*Ruleset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open package directory %q: %s", packageDir, err)
 	}
-	defer packageRoot.Close()
+	defer func() { _ = packageRoot.Close() }()
 
 	file, err := packageRoot.Open(".terraformignore")
 	if err != nil {

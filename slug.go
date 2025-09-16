@@ -395,7 +395,7 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open root directory %q: %w", dst, err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	// Decompress as we read.
 	uncompressed, err := gzip.NewReader(r)

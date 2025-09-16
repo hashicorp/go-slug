@@ -17,7 +17,7 @@ func parseIgnoreFile(rootPath string) *ignorefiles.Ruleset {
 		fmt.Fprintf(os.Stderr, "Error opening root directory %q, default exclusions will apply: %v \n", rootPath, err)
 		return ignorefiles.DefaultRuleset
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	// Look for .terraformignore at our root path/src
 	file, err := root.Open(".terraformignore")

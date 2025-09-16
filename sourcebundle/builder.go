@@ -586,7 +586,7 @@ func (b *Builder) writeManifest(filename string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open target directory %q: %w", dir, err)
 	}
-	defer targetRoot.Close()
+	defer func() { _ = targetRoot.Close() }()
 
 	var root manifestRoot
 	root.FormatVersion = 1

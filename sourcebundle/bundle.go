@@ -64,7 +64,7 @@ func OpenDir(baseDir string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open bundle root directory %q: %w", rootDir, err)
 	}
-	defer bundleRoot.Close()
+	defer func() { _ = bundleRoot.Close() }()
 
 	manifestSrc, err := bundleRoot.ReadFile(manifestFilename)
 	if err != nil {
