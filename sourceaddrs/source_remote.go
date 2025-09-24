@@ -219,8 +219,6 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			// The remaining parts will become the sub-path portion, since
-			// the repository as a whole is the source package.
 			urlStr += "//" + trimSubpath(parts[3:])
 			// NOTE: We can't actually get here if there are exactly four
 			// parts, because gitlab.com is also a Terraform module registry
