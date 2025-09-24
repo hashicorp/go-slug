@@ -328,6 +328,16 @@ func TestParseSource(t *testing.T) {
 			},
 		},
 		{
+			Given: "gitlab.com/hashicorp/stacks.git//path/to/dir?ref=main",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git?ref=main"),
+				},
+				subPath: "path/to/dir",
+			},
+		},
+		{
 			Given: "gitlab.com/hashicorp/go-slug/bleep",
 			// NOTE: gitlab.com _also_ hosts a Terraform Module registry, and so
 			// the registry address interpretation takes precedence if it
