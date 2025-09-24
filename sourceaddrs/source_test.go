@@ -465,6 +465,10 @@ func TestParseSource(t *testing.T) {
 			Given:   "https://:bar@example.com/foo.tgz",
 			WantErr: `invalid remote source address "https://:bar@example.com/foo.tgz": must not use username or password in URL portion`,
 		},
+		{
+			Given:   "github.com/hashicorp/stacks//path/to/dir//invalid?ref=main",
+			WantErr: `invalid remote source address "github.com/hashicorp/stacks//path/to/dir//invalid?ref=main": invalid sub-path: must be slash-separated relative path without any .. or . segments`,
+		},
 	}
 
 	for _, test := range tests {

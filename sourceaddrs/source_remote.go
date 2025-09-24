@@ -181,7 +181,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + joinNonEmpty(parts[3:], "/")
+			urlStr += "//" + trimSubpath(parts[3:])
 		}
 
 		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
@@ -221,7 +221,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			// the repository as a whole is the source package.
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + joinNonEmpty(parts[3:], "/")
+			urlStr += "//" + trimSubpath(parts[3:])
 			// NOTE: We can't actually get here if there are exactly four
 			// parts, because gitlab.com is also a Terraform module registry
 			// and so gitlab.com/a/b/c must be interpreted as a registry
@@ -234,15 +234,19 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 	},
 }
 
-func joinNonEmpty(parts []string, sep string) string {
+// Removes the first leading empty string from the slice,
+// if present. Subsequent empty strings (such as those resulting from consecutive
+// slashes, e.g., "//") are preserved in their positions.
+func trimSubpath(parts []string) string {
 	filtered := []string{}
-	for _, p := range parts {
-		if p != "" {
+	for i, p := range parts {
+		// Only filter leading empty positions in slice
+		if p != "" || i > 0 {
 			filtered = append(filtered, p)
 		}
 	}
 
-	return strings.Join(filtered, sep)
+	return strings.Join(filtered, "/")
 }
 
 var remoteSourceTypePattern = regexp.MustCompile(`^([A-Za-z0-9]+)::(.+)$`)
