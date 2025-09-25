@@ -34,7 +34,7 @@ type PackageFetcher interface {
 	// because it's [Builder]'s responsibility to handle caching and request
 	// coalescing during bundle construction to ensure that it will happen
 	// consistently across different fetcher implementations.
-	FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error)
+	FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, subpath string, targetDir string) (FetchSourcePackageResponse, error)
 }
 
 // FetchSourcePackageResponse is a structure which represents metadata about

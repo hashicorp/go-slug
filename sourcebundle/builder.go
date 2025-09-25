@@ -276,7 +276,8 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 			b.pendingRemote = remain
 
 			pkgAddr := next.sourceAddr.Package()
-			pkgLocalDir, err := b.ensureRemotePackage(ctx, pkgAddr)
+			pkgSubPath := next.sourceAddr.SubPath()
+			pkgLocalDir, err := b.ensureRemotePackage(ctx, pkgAddr, pkgSubPath)
 			if err != nil {
 				diags = append(diags, &internalDiagnostic{
 					severity: DiagError,
@@ -446,7 +447,7 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 	return realSourceAddr, nil
 }
 
-func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.RemotePackage) (localDir string, err error) {
+func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.RemotePackage, pkgSubPath string) (localDir string, err error) {
 	// NOTE: This expects to be called while b.mu is already locked.
 
 	trace := buildTraceFromContext(ctx)
@@ -487,7 +488,7 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 		return "", fmt.Errorf("failed to create new package directory: %w", err)
 	}
 
-	response, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), workDir)
+	response, err := b.fetcher.FetchSourcePackage(reqCtx, pkgAddr.SourceType(), pkgAddr.URL(), pkgSubPath, workDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch package: %w", err)
 	}

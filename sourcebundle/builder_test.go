@@ -704,7 +704,7 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 		}
 	}
 
-	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
+	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, subPath string, targetDir string) (FetchSourcePackageResponse, error) {
 		var ret FetchSourcePackageResponse
 		// Our fake implementation of "fetching" is to just copy one local
 		// directory into another.
@@ -837,10 +837,10 @@ func (t *testBuildTracer) appendLogf(f string, v ...interface{}) {
 	t.log = append(t.log, fmt.Sprintf(f, v...))
 }
 
-type packageFetcherFunc func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error)
+type packageFetcherFunc func(ctx context.Context, sourceType string, url *url.URL, subPath string, targetDir string) (FetchSourcePackageResponse, error)
 
-func (f packageFetcherFunc) FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
-	return f(ctx, sourceType, url, targetDir)
+func (f packageFetcherFunc) FetchSourcePackage(ctx context.Context, sourceType string, url *url.URL, subPath string, targetDir string) (FetchSourcePackageResponse, error) {
+	return f(ctx, sourceType, url, subPath, targetDir)
 }
 
 type registryClientFuncs struct {
