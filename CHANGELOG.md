@@ -8,6 +8,17 @@
 
 ### Security
 
+## v0.16.8
+
+### Improvements
+- Update sourceaddrs package to parse and understand Registry Components ([#101](https://github.com/hashicorp/go-slug/pull/101))
+
+### Fixed
+- Subpath handling for short-hand url expansion for GitHub and GitLab addresses ([#104](https://github.com/hashicorp/go-slug/pull/104))
+
+### Security
+- SECVULN-7809: Fix HasPrefix usage ([#100](https://github.com/hashicorp/go-slug/pull/100))
+
 ## v0.16.7
 
 ### Fixed
