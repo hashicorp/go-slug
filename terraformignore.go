@@ -6,14 +6,21 @@ package slug
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/hashicorp/go-slug/internal/ignorefiles"
 )
 
 func parseIgnoreFile(rootPath string) *ignorefiles.Ruleset {
+	// Use os.Root for secure file access within the root directory
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening root directory %q, default exclusions will apply: %v \n", rootPath, err)
+		return ignorefiles.DefaultRuleset
+	}
+	defer func() { _ = root.Close() }()
+
 	// Look for .terraformignore at our root path/src
-	file, err := os.Open(filepath.Join(rootPath, ".terraformignore"))
+	file, err := root.Open(".terraformignore")
 
 	// If there's any kind of file error, punt and use the default ignore patterns
 	if err != nil {
