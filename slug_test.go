@@ -1402,18 +1402,18 @@ func TestZipSlipProtection(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-
+	
 	in := filepath.Join(dir, "slug.tar.gz")
-
+	
 	// Create malicious archive with path traversal
 	wfh, err := os.Create(in)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-
+	
 	gzipW := gzip.NewWriter(wfh)
 	tarW := tar.NewWriter(gzipW)
-
+	
 	// Add a file that tries to escape via path traversal
 	_ = tarW.WriteHeader(&tar.Header{
 		Name:     "../../../evil_file.txt",
@@ -1421,24 +1421,22 @@ func TestZipSlipProtection(t *testing.T) {
 		Size:     4,
 	})
 	_, _ = tarW.Write([]byte("evil"))
-
+	
 	_ = tarW.Close()
 	_ = gzipW.Close()
 	_ = wfh.Close()
-
+	
 	// Open and try to unpack
 	fh, err := os.Open(in)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer fh.Close()
-
+	defer func() { _ = fh.Close() }()
+	
 	dst, err := os.MkdirTemp(dir, "extract")
 	if err != nil {
 		t.Fatalf("err: %v", err)
-	}
-
-	// This should either fail or safely contain the file within dst
+	}	// This should either fail or safely contain the file within dst
 	err = Unpack(fh, dst)
 	if err != nil {
 		// If it fails, that's acceptable - it blocked the attack
@@ -1496,7 +1494,7 @@ func TestAbsoluteSymlinkContainment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }()
 
 	dst, err := os.MkdirTemp(dir, "extract")
 	if err != nil {
@@ -1545,7 +1543,7 @@ func TestPlatformSpecificSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create os.Root: %v", err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	// Test basic file creation within root
 	testFile := "test.txt"
@@ -1553,7 +1551,7 @@ func TestPlatformSpecificSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create file in root: %v", err)
 	}
-	fh.Close()
+	_ = fh.Close()
 
 	// Verify file exists within the root directory
 	if _, err := root.Stat(testFile); err != nil {
