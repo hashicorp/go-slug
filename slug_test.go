@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1392,4 +1393,172 @@ func verifyPerms(t *testing.T, path string, expect os.FileMode) {
 	if perm := fi.Mode().Perm(); perm != expect {
 		t.Fatalf("expect perms %o for path %s, got %o", expect, path, perm)
 	}
+}
+
+func TestZipSlipProtection(t *testing.T) {
+	// Test that classic Zip Slip attacks (../../etc/passwd) are properly contained
+	dir, err := os.MkdirTemp("", "zipslip")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	in := filepath.Join(dir, "slug.tar.gz")
+
+	// Create malicious archive with path traversal
+	wfh, err := os.Create(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipW := gzip.NewWriter(wfh)
+	tarW := tar.NewWriter(gzipW)
+
+	// Add a file that tries to escape via path traversal
+	_ = tarW.WriteHeader(&tar.Header{
+		Name:     "../../../evil_file.txt",
+		Typeflag: tar.TypeReg,
+		Size:     4,
+	})
+	_, _ = tarW.Write([]byte("evil"))
+
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
+
+	// Open and try to unpack
+	fh, err := os.Open(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer fh.Close()
+
+	dst, err := os.MkdirTemp(dir, "extract")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// This should either fail or safely contain the file within dst
+	err = Unpack(fh, dst)
+	if err != nil {
+		// If it fails, that's acceptable - it blocked the attack
+		t.Logf("Zip Slip attack blocked: %v", err)
+		return
+	}
+
+	// If it succeeded, verify the file is contained within dst
+	evilPath := filepath.Join(dir, "evil_file.txt")
+	if _, err := os.Stat(evilPath); err == nil {
+		t.Fatalf("Zip Slip attack succeeded! File escaped to: %s", evilPath)
+	}
+
+	// Verify the file is safely contained within the extraction directory
+	extractedPath := filepath.Join(dst, "evil_file.txt")
+	if _, err := os.Stat(extractedPath); err != nil {
+		t.Fatalf("File should have been safely extracted within destination: %v", err)
+	}
+
+	t.Log("✅ Zip Slip attack properly contained within extraction directory")
+}
+
+func TestAbsoluteSymlinkContainment(t *testing.T) {
+	// Test that absolute path symlinks are safely handled by os.Root
+	dir, err := os.MkdirTemp("", "abslink")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	in := filepath.Join(dir, "slug.tar.gz")
+
+	// Create archive with absolute symlink
+	wfh, err := os.Create(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipW := gzip.NewWriter(wfh)
+	tarW := tar.NewWriter(gzipW)
+
+	// Add symlink with absolute target
+	_ = tarW.WriteHeader(&tar.Header{
+		Name:     "abs_symlink",
+		Linkname: "/etc/passwd",
+		Typeflag: tar.TypeSymlink,
+	})
+
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
+
+	// Open and try to unpack
+	fh, err := os.Open(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer fh.Close()
+
+	dst, err := os.MkdirTemp(dir, "extract")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// According to os.Root docs: "Symbolic links must not be absolute"
+	// This should fail with the existing validation
+	err = Unpack(fh, dst)
+	if err == nil {
+		t.Fatalf("Expected absolute symlink to be rejected, but unpack succeeded")
+	}
+
+	var e *IllegalSlugError
+	if !errors.As(err, &e) {
+		t.Fatalf("Expected IllegalSlugError for absolute symlink, got %T: %v", err, err)
+	}
+
+	if !strings.Contains(err.Error(), "external target") {
+		t.Fatalf("Expected 'external target' error for absolute symlink, got: %v", err)
+	}
+
+	t.Log("✅ Absolute symlink properly rejected")
+}
+
+func TestPlatformSpecificSecurity(t *testing.T) {
+	// Document platform-specific limitations of os.Root security
+	switch runtime.GOOS {
+	case "js":
+		t.Skip("os.Root has TOCTOU vulnerabilities on js platform")
+	case "plan9":
+		t.Skip("os.Root doesn't track directories across renames on plan9")
+	case "wasip1":
+		t.Skip("os.Root has limited functionality on wasip1")
+	}
+
+	// On supported platforms, verify basic containment works
+	dir, err := os.MkdirTemp("", "platform")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	// Test that os.Root can be created and basic operations work
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatalf("Failed to create os.Root: %v", err)
+	}
+	defer root.Close()
+
+	// Test basic file creation within root
+	testFile := "test.txt"
+	fh, err := root.Create(testFile)
+	if err != nil {
+		t.Fatalf("Failed to create file in root: %v", err)
+	}
+	fh.Close()
+
+	// Verify file exists within the root directory
+	if _, err := root.Stat(testFile); err != nil {
+		t.Fatalf("File should exist within root: %v", err)
+	}
+
+	t.Logf("✅ Platform %s: os.Root basic operations working", runtime.GOOS)
 }
