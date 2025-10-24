@@ -577,6 +577,17 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 }
 
 func (b *Builder) writeManifest(filename string) error {
+	// Extract directory and filename for secure Root access
+	dir := filepath.Dir(filename)
+	name := filepath.Base(filename)
+
+	// Use os.Root for secure file writing within the target directory
+	targetRoot, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("cannot open target directory %q: %w", dir, err)
+	}
+	defer func() { _ = targetRoot.Close() }()
+
 	var root manifestRoot
 	root.FormatVersion = 1
 
@@ -628,7 +639,7 @@ func (b *Builder) writeManifest(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize to JSON: %#w", err)
 	}
-	err = os.WriteFile(filename, buf, 0664)
+	err = targetRoot.WriteFile(name, buf, 0664)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %#w", err)
 	}
