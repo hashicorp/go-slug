@@ -40,6 +40,90 @@ func TestTargetWithinRoot(t *testing.T) {
 			target:   tempDir,
 			expected: false,
 		},
+		{
+			name:     "Target within root but target filename starts with ..",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Target within root but target directory starts with ..",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..subdir", "file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Path with space",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "sub dir", "file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Path with space and traversal",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "  ../../../", "file.txt"),
+			expected: false,
+		},
+		{
+			name:     "Path traversal start with and followed by ../",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "./..", "sensitive", "file.txt"),
+			expected: false,
+		},
+		{
+			name:     "Path traversal with ../ at beginning",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..", "sensitive", "file.txt"),
+			expected: false,
+		},
+		{
+			name:     "Path traversal with multiple ../",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..", "..", "etc", "passwd"),
+			expected: false,
+		},
+		{
+			name:     "Empty target path",
+			root:     tempDir,
+			target:   "",
+			expected: false,
+		},
+		{
+			name:     "Relative root path",
+			root:     ".",
+			target:   "./file.txt",
+			expected: true,
+		},
+		{
+			name:     "Relative target escaping relative root",
+			root:     "./subdir",
+			target:   "../file.txt",
+			expected: false,
+		},
+		{
+			name:     "Root with trailing slash",
+			root:     tempDir + "/",
+			target:   filepath.Join(tempDir, "file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Target with redundant path elements",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "subdir", "..", "file.txt"),
+			expected: true,
+		},
+		{
+			name:     "Target with redundant path elements escaping",
+			root:     tempDir,
+			target:   filepath.Join(tempDir, "..", tempDir, "file.txt"),
+			expected: false,
+		},
+		{
+			name:     "Same path with different representations",
+			root:     "/tmp/root",
+			target:   "/tmp/root/./file.txt",
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {

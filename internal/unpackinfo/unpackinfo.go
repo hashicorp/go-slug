@@ -39,13 +39,23 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	dst = filepath.Clean(dst)
 	path := filepath.Clean(header.Name)
 
-	path = filepath.Join(dst, path)
-	target := filepath.Clean(path)
+	path = filepath.Clean(filepath.Join(dst, path))
+	target := path
 
 	// Check for path traversal by ensuring the target is within the destination
 	rel, err := filepath.Rel(dst, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
+	}
+
+	rel = filepath.Clean(rel)
+
+	rel_components := strings.Split(rel, string(os.PathSeparator))
+
+	for _, component := range rel_components {
+		if component == ".." {
+			return UnpackInfo{}, fmt.Errorf("invalid filename, traversal with \"..\" outside of current directory")
+		}
 	}
 
 	// Ensure the destination is not through any symlinks. This prevents
@@ -60,7 +70,7 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	// the mode on each to ensure we wouldn't be passing through any
 	// symlinks.
 	currentPath := dst // Start at the root of the unpacked tarball.
-	components := strings.Split(header.Name, "/")
+	components := strings.Split(filepath.Clean(header.Name), "/")
 
 	for i := 0; i < len(components)-1; i++ {
 		currentPath = filepath.Join(currentPath, components[i])
