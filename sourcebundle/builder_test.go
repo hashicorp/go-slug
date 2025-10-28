@@ -519,6 +519,12 @@ func TestBuilderTerraformIgnore(t *testing.T) {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("excluded file exists but is not readable; should have been removed altogether")
 	}
+
+	if _, err := os.Lstat(filepath.Join(localPkgDir, ".excluded")); err == nil {
+		t.Errorf(".excluded dir exists; should have been removed")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(".excluded dir exists but is not readable; should have been removed altogether")
+	}
 }
 
 func TestBuilderCoalescePackages(t *testing.T) {
