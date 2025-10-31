@@ -687,6 +687,11 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 			if err != nil {
 				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
 			}
+			// Account for .terraformignore file rulesets that remove entire subtrees
+			// in order to skip additional reads.
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
