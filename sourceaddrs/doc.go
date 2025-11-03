@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 // Package sourceaddrs deals with the various types of source code address
