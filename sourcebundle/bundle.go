@@ -34,6 +34,9 @@ type Bundle struct {
 
 	registryPackageSources             map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource
 	registryPackageVersionDeprecations map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation
+
+	componentPackageSources             map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource
+	componentPackageVersionDeprecations map[regaddr.ComponentPackage]map[versions.Version]*RegistryVersionDeprecation
 }
 
 // OpenDir opens a bundle rooted at the given base directory.
@@ -52,11 +55,13 @@ func OpenDir(baseDir string) (*Bundle, error) {
 	}
 
 	ret := &Bundle{
-		rootDir:                            rootDir,
-		remotePackageDirs:                  make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:                  make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		registryPackageSources:             make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
-		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
+		rootDir:                             rootDir,
+		remotePackageDirs:                   make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:                   make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		registryPackageSources:              make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
+		registryPackageVersionDeprecations:  make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
+		componentPackageSources:             make(map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource),
+		componentPackageVersionDeprecations: make(map[regaddr.ComponentPackage]map[versions.Version]*RegistryVersionDeprecation),
 	}
 
 	// Use os.Root for secure file access within the bundle directory
@@ -136,6 +141,35 @@ func OpenDir(baseDir string) (*Bundle, error) {
 		}
 	}
 
+	for _, cpm := range manifest.ComponentMeta {
+		pkgAddr, err := sourceaddrs.ParseComponentPackage(cpm.SourceAddr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid component package address %q: %w", cpm.SourceAddr, err)
+		}
+		vs := ret.componentPackageSources[pkgAddr]
+		if vs == nil {
+			vs = make(map[versions.Version]sourceaddrs.RemoteSource)
+			ret.componentPackageSources[pkgAddr] = vs
+		}
+		deprecations := ret.componentPackageVersionDeprecations[pkgAddr]
+		if deprecations == nil {
+			deprecations = make(map[versions.Version]*RegistryVersionDeprecation)
+			ret.componentPackageVersionDeprecations[pkgAddr] = deprecations
+		}
+		for versionStr, mv := range cpm.Versions {
+			version, err := versions.ParseVersion(versionStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid component package version %q: %w", versionStr, err)
+			}
+			deprecations[version] = mv.Deprecation
+			sourceAddr, err := sourceaddrs.ParseRemoteSource(mv.SourceAddr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid component package source address %q: %w", mv.SourceAddr, err)
+			}
+			vs[version] = sourceAddr
+		}
+	}
+
 	return ret, nil
 }
 
@@ -155,6 +189,8 @@ func (b *Bundle) LocalPathForSource(addr sourceaddrs.FinalSource) (string, error
 		return b.LocalPathForRemoteSource(addr)
 	case sourceaddrs.RegistrySourceFinal:
 		return b.LocalPathForRegistrySource(addr.Unversioned(), addr.SelectedVersion())
+	case sourceaddrs.ComponentSourceFinal:
+		return b.LocalPathForComponentSource(addr.Unversioned(), addr.SelectedVersion())
 	case sourceaddrs.LocalSource:
 		return filepath.FromSlash(addr.RelativePath()), nil
 	default:
@@ -202,6 +238,33 @@ func (b *Bundle) LocalPathForRegistrySource(addr sourceaddrs.RegistrySource, ver
 // selected version together as a single address value.
 func (b *Bundle) LocalPathForFinalRegistrySource(addr sourceaddrs.RegistrySourceFinal) (string, error) {
 	return b.LocalPathForRegistrySource(addr.Unversioned(), addr.SelectedVersion())
+}
+
+// LocalPathForComponentSource returns the local path within the bundle that
+// corresponds with the given component address and version, or an error if the
+// source address is within a source package not included in the bundle.
+func (b *Bundle) LocalPathForComponentSource(addr sourceaddrs.ComponentSource, version versions.Version) (string, error) {
+	pkgAddr := addr.Package()
+	vs, ok := b.componentPackageSources[pkgAddr]
+	if !ok {
+		return "", fmt.Errorf("source bundle does not include %s", pkgAddr)
+	}
+	baseSourceAddr, ok := vs[version]
+	if !ok {
+		return "", fmt.Errorf("source bundle does not include %s v%s", pkgAddr, version)
+	}
+
+	// The address we were given might have its own source address, so we need
+	// to incorporate that into our result.
+	finalSourceAddr := addr.FinalSourceAddr(baseSourceAddr)
+	return b.LocalPathForRemoteSource(finalSourceAddr)
+}
+
+// LocalPathForFinalComponentSource is a variant of
+// [Bundle.LocalPathForComponentSource] which passes the source address and
+// selected version together as a single address value.
+func (b *Bundle) LocalPathForFinalComponentSource(addr sourceaddrs.ComponentSourceFinal) (string, error) {
+	return b.LocalPathForComponentSource(addr.Unversioned(), addr.SelectedVersion())
 }
 
 // SourceForLocalPath is the inverse of [Bundle.LocalPathForSource],
@@ -378,6 +441,59 @@ func (b *Bundle) RegistryPackageVersionDeprecation(pkgAddr regaddr.ModulePackage
 // value to false if no such version is included in the bundle.
 func (b *Bundle) RegistryPackageSourceAddr(pkgAddr regaddr.ModulePackage, version versions.Version) (sourceaddrs.RemoteSource, bool) {
 	sourceAddr, ok := b.registryPackageSources[pkgAddr][version]
+	return sourceAddr, ok
+}
+
+// ComponentPackages returns a list of all of the distinct component packages
+// that contributed to this bundle.
+//
+// The result is in a consistent but unspecified sorted order.
+func (b *Bundle) ComponentPackages() []regaddr.ComponentPackage {
+	ret := make([]regaddr.ComponentPackage, 0, len(b.componentPackageSources))
+	for pkgAddr := range b.componentPackageSources {
+		ret = append(ret, pkgAddr)
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].String() < ret[j].String()
+	})
+	return ret
+}
+
+// ComponentPackageVersions returns a list of all of the versions of the given
+// component registry package that this bundle has package content for.
+//
+// This result can be used as a substitute for asking the remote registry which
+// versions are available in any situation where a caller is interested only
+// in what's bundled, and will not consider installing anything new from
+// the origin registry.
+//
+// The result is guaranteed to be sorted with lower-precedence version numbers
+// placed earlier in the list.
+func (b *Bundle) ComponentPackageVersions(pkgAddr regaddr.ComponentPackage) versions.List {
+	vs := b.componentPackageSources[pkgAddr]
+	if len(vs) == 0 {
+		return nil
+	}
+	ret := make(versions.List, 0, len(vs))
+	for v := range vs {
+		ret = append(ret, v)
+	}
+	ret.Sort()
+	return ret
+}
+
+// ComponentPackageVersionDeprecation returns deprecation information for the
+// given version of the given component package, or nil if that version is not
+// deprecated or not included in the bundle.
+func (b *Bundle) ComponentPackageVersionDeprecation(pkgAddr regaddr.ComponentPackage, version versions.Version) *RegistryVersionDeprecation {
+	return b.componentPackageVersionDeprecations[pkgAddr][version]
+}
+
+// ComponentPackageSourceAddr returns the remote source address corresponding
+// to the given version of the given component package, or sets its second return
+// value to false if no such version is included in the bundle.
+func (b *Bundle) ComponentPackageSourceAddr(pkgAddr regaddr.ComponentPackage, version versions.Version) (sourceaddrs.RemoteSource, bool) {
+	sourceAddr, ok := b.componentPackageSources[pkgAddr][version]
 	return sourceAddr, ok
 }
 
