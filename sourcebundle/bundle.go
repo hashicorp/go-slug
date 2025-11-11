@@ -35,8 +35,7 @@ type Bundle struct {
 	registryPackageSources             map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource
 	registryPackageVersionDeprecations map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation
 
-	componentPackageSources             map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource
-	componentPackageVersionDeprecations map[regaddr.ComponentPackage]map[versions.Version]*RegistryVersionDeprecation
+	componentPackageSources map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource
 }
 
 // OpenDir opens a bundle rooted at the given base directory.
@@ -55,13 +54,12 @@ func OpenDir(baseDir string) (*Bundle, error) {
 	}
 
 	ret := &Bundle{
-		rootDir:                             rootDir,
-		remotePackageDirs:                   make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:                   make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		registryPackageSources:              make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
-		registryPackageVersionDeprecations:  make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
-		componentPackageSources:             make(map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource),
-		componentPackageVersionDeprecations: make(map[regaddr.ComponentPackage]map[versions.Version]*RegistryVersionDeprecation),
+		rootDir:                            rootDir,
+		remotePackageDirs:                  make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:                  make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		registryPackageSources:             make(map[regaddr.ModulePackage]map[versions.Version]sourceaddrs.RemoteSource),
+		registryPackageVersionDeprecations: make(map[regaddr.ModulePackage]map[versions.Version]*RegistryVersionDeprecation),
+		componentPackageSources:            make(map[regaddr.ComponentPackage]map[versions.Version]sourceaddrs.RemoteSource),
 	}
 
 	// Use os.Root for secure file access within the bundle directory
@@ -151,17 +149,11 @@ func OpenDir(baseDir string) (*Bundle, error) {
 			vs = make(map[versions.Version]sourceaddrs.RemoteSource)
 			ret.componentPackageSources[pkgAddr] = vs
 		}
-		deprecations := ret.componentPackageVersionDeprecations[pkgAddr]
-		if deprecations == nil {
-			deprecations = make(map[versions.Version]*RegistryVersionDeprecation)
-			ret.componentPackageVersionDeprecations[pkgAddr] = deprecations
-		}
 		for versionStr, mv := range cpm.Versions {
 			version, err := versions.ParseVersion(versionStr)
 			if err != nil {
 				return nil, fmt.Errorf("invalid component package version %q: %w", versionStr, err)
 			}
-			deprecations[version] = mv.Deprecation
 			sourceAddr, err := sourceaddrs.ParseRemoteSource(mv.SourceAddr)
 			if err != nil {
 				return nil, fmt.Errorf("invalid component package source address %q: %w", mv.SourceAddr, err)
@@ -480,13 +472,6 @@ func (b *Bundle) ComponentPackageVersions(pkgAddr regaddr.ComponentPackage) vers
 	}
 	ret.Sort()
 	return ret
-}
-
-// ComponentPackageVersionDeprecation returns deprecation information for the
-// given version of the given component package, or nil if that version is not
-// deprecated or not included in the bundle.
-func (b *Bundle) ComponentPackageVersionDeprecation(pkgAddr regaddr.ComponentPackage, version versions.Version) *RegistryVersionDeprecation {
-	return b.componentPackageVersionDeprecations[pkgAddr][version]
 }
 
 // ComponentPackageSourceAddr returns the remote source address corresponding

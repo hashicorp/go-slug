@@ -70,13 +70,7 @@ type ComponentPackageVersionsResponse struct {
 }
 
 type ComponentPackageInfo struct {
-	Version     versions.Version
-	Deprecation *ComponentPackageVersionDeprecation `json:"deprecation"`
-}
-
-type ComponentPackageVersionDeprecation struct {
-	Reason string `json:"reason"`
-	Link   string `json:"link"`
+	Version versions.Version
 }
 
 // ComponentPackageSourceAddrResponse is an opaque type which represents the

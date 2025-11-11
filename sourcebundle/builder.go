@@ -93,12 +93,6 @@ type Builder struct {
 	// selected version of each component registry package.
 	resolvedComponent map[componentPackageVersion]sourceaddrs.RemoteSource
 
-	// componentPackageVersionDeprecations tracks potential deprecations for
-	// each component package version. If a component package version is not deprecated, its mapped value will be nil.
-	// This data, including both package versions and their potential deprecations, is gathered from the registry client and cached. It is included in the bundle,
-	// where it can be used to warn about deprecated package versions.
-	componentPackageVersionDeprecations map[componentPackageVersion]*RegistryVersionDeprecation
-
 	// componentPackageVersions caches responses from component registry calls to
 	// look up the available versions for a particular component package. Although
 	// these could potentially change while we're running, we assume that the
@@ -126,18 +120,17 @@ func NewBuilder(targetDir string, fetcher PackageFetcher, registryClient Registr
 		return nil, fmt.Errorf("invalid target directory: %w", err)
 	}
 	return &Builder{
-		targetDir:                           absDir,
-		fetcher:                             fetcher,
-		registryClient:                      registryClient,
-		analyzed:                            make(map[remoteArtifact]struct{}),
-		remotePackageDirs:                   make(map[sourceaddrs.RemotePackage]string),
-		remotePackageMeta:                   make(map[sourceaddrs.RemotePackage]*PackageMeta),
-		resolvedRegistry:                    make(map[registryPackageVersion]sourceaddrs.RemoteSource),
-		packageVersionDeprecations:          make(map[registryPackageVersion]*RegistryVersionDeprecation),
-		registryPackageVersions:             make(map[regaddr.ModulePackage][]ModulePackageInfo),
-		resolvedComponent:                   make(map[componentPackageVersion]sourceaddrs.RemoteSource),
-		componentPackageVersionDeprecations: make(map[componentPackageVersion]*RegistryVersionDeprecation),
-		componentPackageVersions:            make(map[regaddr.ComponentPackage][]ComponentPackageInfo),
+		targetDir:                  absDir,
+		fetcher:                    fetcher,
+		registryClient:             registryClient,
+		analyzed:                   make(map[remoteArtifact]struct{}),
+		remotePackageDirs:          make(map[sourceaddrs.RemotePackage]string),
+		remotePackageMeta:          make(map[sourceaddrs.RemotePackage]*PackageMeta),
+		resolvedRegistry:           make(map[registryPackageVersion]sourceaddrs.RemoteSource),
+		packageVersionDeprecations: make(map[registryPackageVersion]*RegistryVersionDeprecation),
+		registryPackageVersions:    make(map[regaddr.ModulePackage][]ModulePackageInfo),
+		resolvedComponent:          make(map[componentPackageVersion]sourceaddrs.RemoteSource),
+		componentPackageVersions:   make(map[regaddr.ComponentPackage][]ComponentPackageInfo),
 	}, nil
 }
 
@@ -576,24 +569,6 @@ func (b *Builder) findComponentPackageSource(ctx context.Context, sourceAddr sou
 		}
 		realSourceAddr = resp.SourceAddr
 		b.resolvedComponent[pkgVer] = realSourceAddr
-
-		var versionDeprecation *ComponentPackageVersionDeprecation
-		for _, v := range availablePackageInfos {
-			if selectedVersion.Same(v.Version) {
-				versionDeprecation = v.Deprecation
-				break
-			}
-
-		}
-		var deprecation *RegistryVersionDeprecation
-		if versionDeprecation != nil {
-			deprecation = &RegistryVersionDeprecation{
-				Version: selectedVersion.String(),
-				Reason:  versionDeprecation.Reason,
-				Link:    versionDeprecation.Link,
-			}
-		}
-		b.componentPackageVersionDeprecations[pkgVer] = deprecation
 	}
 
 	// If our original source address had its own sub-path component then we
@@ -805,10 +780,8 @@ func (b *Builder) writeManifest(filename string) error {
 			manifestMeta = &root.ComponentMeta[len(root.ComponentMeta)-1]
 			componentObjs[cpv.pkg] = manifestMeta
 		}
-		deprecation := b.componentPackageVersionDeprecations[cpv]
 		manifestMeta.Versions[cpv.version.String()] = manifestRegistryVersion{
-			SourceAddr:  sourceInfo.String(),
-			Deprecation: deprecation,
+			SourceAddr: sourceInfo.String(),
 		}
 	}
 

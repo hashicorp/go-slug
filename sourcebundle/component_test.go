@@ -28,13 +28,12 @@ func TestBuilderComponentSimple(t *testing.T) {
 			"https://example.com/comp.tgz": "testdata/pkgs/hello",
 		},
 		nil, // no module registry packages
-		nil, // no module deprecations
 		map[string]map[string]string{
 			"example.com/hashicorp/mycomponent": {
 				"2.0.0": "https://example.com/comp.tgz",
 			},
 		},
-		nil, // no component deprecations
+		nil, // no module deprecations
 	)
 
 	realSource := sourceaddrs.MustParseSource("https://example.com/comp.tgz").(sourceaddrs.RemoteSource)
@@ -106,69 +105,6 @@ func TestBuilderComponentSimple(t *testing.T) {
 	if gotSourceAddr.String() != "https://example.com/comp.tgz" {
 		t.Errorf("wrong source address: got %s, want https://example.com/comp.tgz", gotSourceAddr)
 	}
-
-	// Test ComponentPackageVersionDeprecation (should be nil)
-	gotDeprecation := bundle.ComponentPackageVersionDeprecation(wantPkgAddr, versions.MustParseVersion("2.0.0"))
-	if gotDeprecation != nil {
-		t.Errorf("expected nil deprecation, got %v", gotDeprecation)
-	}
-}
-
-// TestBuilderComponentVersionDeprecation tests component version deprecation handling
-func TestBuilderComponentVersionDeprecation(t *testing.T) {
-	tracer := testBuildTracer{}
-	ctx := tracer.OnContext(context.Background())
-
-	targetDir := t.TempDir()
-	builder := testingBuilderWithComponents(
-		t, targetDir,
-		map[string]string{
-			"https://example.com/comp.tgz": "testdata/pkgs/hello",
-		},
-		nil, nil,
-		map[string]map[string]string{
-			"example.com/hashicorp/mycomponent": {
-				"1.5.0": "https://example.com/comp.tgz",
-			},
-		},
-		map[string]map[string]*ComponentPackageVersionDeprecation{
-			"example.com/hashicorp/mycomponent": {
-				"1.5.0": &ComponentPackageVersionDeprecation{
-					Reason: "component deprecated for testing",
-					Link:   "https://example.com/deprecation-notice",
-				},
-			},
-		},
-	)
-
-	compSource := sourceaddrs.MustParseSource("example.com/hashicorp/mycomponent").(sourceaddrs.ComponentSource)
-	diags := builder.AddComponentSource(ctx, compSource, versions.All, noDependencyFinder)
-	if len(diags) > 0 {
-		t.Fatal("unexpected diagnostics")
-	}
-
-	bundle, err := builder.Close()
-	if err != nil {
-		t.Fatalf("failed to close bundle: %s", err)
-	}
-
-	pkgAddr, _ := sourceaddrs.ParseComponentPackage("example.com/hashicorp/mycomponent")
-	version := versions.MustParseVersion("1.5.0")
-
-	// Test ComponentPackageVersionDeprecation
-	wantDeprecations := map[regaddr.ComponentPackage]map[versions.Version]*RegistryVersionDeprecation{
-		pkgAddr: {
-			version: &RegistryVersionDeprecation{
-				Version: "1.5.0",
-				Reason:  "component deprecated for testing",
-				Link:    "https://example.com/deprecation-notice",
-			},
-		},
-	}
-	gotDeprecations := bundle.componentPackageVersionDeprecations
-	if diff := cmp.Diff(wantDeprecations, gotDeprecations); diff != "" {
-		t.Errorf("wrong deprecations\n%s", diff)
-	}
 }
 
 // TestBuilderComponentMultipleVersions tests adding multiple component sources with different versions
@@ -183,7 +119,7 @@ func TestBuilderComponentMultipleVersions(t *testing.T) {
 			"https://example.com/comp-2.0.tgz": "testdata/pkgs/hello",
 			"https://example.com/comp-3.0.tgz": "testdata/pkgs/hello",
 		},
-		nil, nil,
+		nil,
 		map[string]map[string]string{
 			"example.com/hashicorp/mycomponent": {
 				"1.0.0": "https://example.com/comp-1.0.tgz",
@@ -264,7 +200,7 @@ func TestBuilderComponentFinalSource(t *testing.T) {
 		map[string]string{
 			"https://example.com/comp.tgz": "testdata/pkgs/hello",
 		},
-		nil, nil,
+		nil,
 		map[string]map[string]string{
 			"example.com/hashicorp/mycomponent": {
 				"1.2.3": "https://example.com/comp.tgz",
@@ -324,7 +260,7 @@ func TestBuilderComponentWithSubpath(t *testing.T) {
 		map[string]string{
 			"https://example.com/comp.tgz": "testdata/pkgs", // Contains subdirs
 		},
-		nil, nil,
+		nil,
 		map[string]map[string]string{
 			"example.com/hashicorp/mycomponent": {
 				"1.0.0": "https://example.com/comp.tgz",
@@ -371,7 +307,7 @@ func TestComponentPackagesSorting(t *testing.T) {
 			"https://example.com/beta.tgz":  "testdata/pkgs/hello",
 			"https://example.com/gamma.tgz": "testdata/pkgs/hello",
 		},
-		nil, nil,
+		nil,
 		map[string]map[string]string{
 			"example.com/zzz/component": {
 				"1.0.0": "https://example.com/alpha.tgz",
@@ -439,7 +375,6 @@ func TestComponentMixedWithModules(t *testing.T) {
 				"1.0.0": "https://example.com/module.tgz",
 			},
 		},
-		nil,
 		map[string]map[string]string{
 			"example.com/hashicorp/mycomponent": {
 				"2.0.0": "https://example.com/component.tgz",
@@ -485,9 +420,8 @@ func testingBuilderWithComponents(
 	targetDir string,
 	remotePackages map[string]string,
 	registryPackages map[string]map[string]string,
-	registryVersionDeprecations map[string]map[string]*ModulePackageVersionDeprecation,
 	componentPackages map[string]map[string]string,
-	componentVersionDeprecations map[string]map[string]*ComponentPackageVersionDeprecation,
+	registryVersionDeprecations map[string]map[string]*ModulePackageVersionDeprecation,
 ) *Builder {
 	t.Helper()
 
@@ -509,7 +443,6 @@ func testingBuilderWithComponents(
 	registryPkgs := make([]fakeRegistryPackage, 0, len(registryPackages))
 	componentPkgs := make([]fakeComponentPackage, 0, len(componentPackages))
 	registryDeprecations := make(map[string]map[versions.Version]*ModulePackageVersionDeprecation)
-	componentDeprecations := make(map[string]map[versions.Version]*ComponentPackageVersionDeprecation)
 
 	// Parse remote packages
 	for pkgAddrRaw, localDir := range remotePackages {
@@ -572,37 +505,20 @@ func testingBuilderWithComponents(
 		componentPkgs = append(componentPkgs, pkg)
 	}
 
-	// Parse module deprecations
 	for pkgAddrRaw, deprecations := range registryVersionDeprecations {
 		pkgAddr, err := sourceaddrs.ParseRegistryPackage(pkgAddrRaw)
 		if err != nil {
 			t.Fatalf("invalid registry package address %q: %s", pkgAddrRaw, err)
+		}
+		if registryDeprecations[pkgAddr.Namespace] == nil {
+			registryDeprecations[pkgAddr.Namespace] = make(map[versions.Version]*ModulePackageVersionDeprecation)
 		}
 		for versionRaw, versionDeprecation := range deprecations {
 			version, err := versions.ParseVersion(versionRaw)
 			if err != nil {
 				t.Fatalf("invalid registry package version %q for %s: %s", versionRaw, pkgAddr, err)
 			}
-			registryDeprecations[pkgAddr.Namespace] = map[versions.Version]*ModulePackageVersionDeprecation{
-				version: versionDeprecation,
-			}
-		}
-	}
-
-	// Parse component deprecations
-	for pkgAddrRaw, deprecations := range componentVersionDeprecations {
-		pkgAddr, err := sourceaddrs.ParseComponentPackage(pkgAddrRaw)
-		if err != nil {
-			t.Fatalf("invalid component package address %q: %s", pkgAddrRaw, err)
-		}
-		for versionRaw, versionDeprecation := range deprecations {
-			version, err := versions.ParseVersion(versionRaw)
-			if err != nil {
-				t.Fatalf("invalid component package version %q for %s: %s", versionRaw, pkgAddr, err)
-			}
-			componentDeprecations[pkgAddr.Namespace] = map[versions.Version]*ComponentPackageVersionDeprecation{
-				version: versionDeprecation,
-			}
+			registryDeprecations[pkgAddr.Namespace][version] = versionDeprecation
 		}
 	}
 
@@ -667,8 +583,7 @@ func testingBuilderWithComponents(
 				ret.Versions = make([]ComponentPackageInfo, 0, len(pkg.versions))
 				for version := range pkg.versions {
 					ret.Versions = append(ret.Versions, ComponentPackageInfo{
-						Version:     version,
-						Deprecation: componentDeprecations[pkg.pkgAddr.Namespace][version],
+						Version: version,
 					})
 				}
 				return ret, nil
