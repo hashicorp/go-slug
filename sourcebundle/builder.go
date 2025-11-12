@@ -548,8 +548,9 @@ func (b *Builder) findComponentPackageSource(ctx context.Context, sourceAddr sou
 	var availableVersions versions.List
 	if !ok {
 		resp, err := b.registryClient.ComponentPackageVersions(ctx, pkgAddr)
+		// FIXME: Just vetting some behaviors by taking some short-cuts
 		if err != nil {
-			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to query available versions for %s: %w", pkgAddr, err)
+			availablePackageInfos = append(availablePackageInfos, ComponentPackageInfo{Version: allowedVersions.List().Newest()})
 		}
 
 		availablePackageInfos = resp.Versions
@@ -557,6 +558,11 @@ func (b *Builder) findComponentPackageSource(ctx context.Context, sourceAddr sou
 		availableVersions = extractVersionListFromComponentResponse(availablePackageInfos)
 	} else {
 		availableVersions = extractVersionListFromComponentResponse(availablePackageInfos)
+	}
+
+	// FIXME: Just vetting some behaviors by taking some short-cuts
+	if len(availableVersions) == 0 {
+		availableVersions = append(availableVersions, allowedVersions.List().Newest())
 	}
 
 	selectedVersion := availableVersions.NewestInSet(allowedVersions)
