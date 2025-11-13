@@ -14,8 +14,9 @@ type manifestRoot struct {
 	// one version of this format.
 	FormatVersion uint64 `json:"terraform_source_bundle"`
 
-	Packages     []manifestRemotePackage `json:"packages,omitempty"`
-	RegistryMeta []manifestRegistryMeta  `json:"registry,omitempty"`
+	Packages      []manifestRemotePackage `json:"packages,omitempty"`
+	RegistryMeta  []manifestRegistryMeta  `json:"registry,omitempty"`
+	ComponentMeta []manifestComponentMeta `json:"components,omitempty"`
 }
 
 type manifestRemotePackage struct {
@@ -32,6 +33,15 @@ type manifestRemotePackage struct {
 
 type manifestRegistryMeta struct {
 	// SourceAddr is the address of an entire registry package, meaning that
+	// it must not have a sub-path portion.
+	SourceAddr string `json:"source"`
+
+	// Versions is a map from string representations of [versions.Version].
+	Versions map[string]manifestRegistryVersion `json:"versions,omitempty"`
+}
+
+type manifestComponentMeta struct {
+	// SourceAddr is the address of an entire component package, meaning that
 	// it must not have a sub-path portion.
 	SourceAddr string `json:"source"`
 
