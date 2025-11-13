@@ -34,7 +34,6 @@ func TestBuilderComponentSimple(t *testing.T) {
 				"2.0.0": "https://example.com/comp.tgz",
 			},
 		},
-		nil, // no component deprecations
 	)
 
 	realSource := sourceaddrs.MustParseSource("https://example.com/comp.tgz").(sourceaddrs.RemoteSource)
@@ -131,14 +130,6 @@ func TestBuilderComponentVersionDeprecation(t *testing.T) {
 				"1.5.0": "https://example.com/comp.tgz",
 			},
 		},
-		map[string]map[string]*ComponentPackageVersionDeprecation{
-			"example.com/hashicorp/mycomponent": {
-				"1.5.0": &ComponentPackageVersionDeprecation{
-					Reason: "component deprecated for testing",
-					Link:   "https://example.com/deprecation-notice",
-				},
-			},
-		},
 	)
 
 	compSource := sourceaddrs.MustParseSource("example.com/hashicorp/mycomponent").(sourceaddrs.ComponentSource)
@@ -191,7 +182,6 @@ func TestBuilderComponentMultipleVersions(t *testing.T) {
 				"3.0.0": "https://example.com/comp-3.0.tgz",
 			},
 		},
-		nil,
 	)
 
 	compSource := sourceaddrs.MustParseSource("example.com/hashicorp/mycomponent").(sourceaddrs.ComponentSource)
@@ -270,7 +260,6 @@ func TestBuilderComponentFinalSource(t *testing.T) {
 				"1.2.3": "https://example.com/comp.tgz",
 			},
 		},
-		nil,
 	)
 
 	compSource := sourceaddrs.MustParseSource("example.com/hashicorp/mycomponent").(sourceaddrs.ComponentSource)
@@ -330,7 +319,6 @@ func TestBuilderComponentWithSubpath(t *testing.T) {
 				"1.0.0": "https://example.com/comp.tgz",
 			},
 		},
-		nil,
 	)
 
 	// Parse component source with subpath
@@ -383,7 +371,6 @@ func TestComponentPackagesSorting(t *testing.T) {
 				"1.0.0": "https://example.com/gamma.tgz",
 			},
 		},
-		nil,
 	)
 
 	// Add components in random order
@@ -445,7 +432,6 @@ func TestComponentMixedWithModules(t *testing.T) {
 				"2.0.0": "https://example.com/component.tgz",
 			},
 		},
-		nil,
 	)
 
 	// Add both module and component
@@ -487,7 +473,6 @@ func testingBuilderWithComponents(
 	registryPackages map[string]map[string]string,
 	registryVersionDeprecations map[string]map[string]*ModulePackageVersionDeprecation,
 	componentPackages map[string]map[string]string,
-	componentVersionDeprecations map[string]map[string]*ComponentPackageVersionDeprecation,
 ) *Builder {
 	t.Helper()
 
@@ -509,7 +494,6 @@ func testingBuilderWithComponents(
 	registryPkgs := make([]fakeRegistryPackage, 0, len(registryPackages))
 	componentPkgs := make([]fakeComponentPackage, 0, len(componentPackages))
 	registryDeprecations := make(map[string]map[versions.Version]*ModulePackageVersionDeprecation)
-	componentDeprecations := make(map[string]map[versions.Version]*ComponentPackageVersionDeprecation)
 
 	// Parse remote packages
 	for pkgAddrRaw, localDir := range remotePackages {
@@ -589,23 +573,6 @@ func testingBuilderWithComponents(
 		}
 	}
 
-	// Parse component deprecations
-	for pkgAddrRaw, deprecations := range componentVersionDeprecations {
-		pkgAddr, err := sourceaddrs.ParseComponentPackage(pkgAddrRaw)
-		if err != nil {
-			t.Fatalf("invalid component package address %q: %s", pkgAddrRaw, err)
-		}
-		for versionRaw, versionDeprecation := range deprecations {
-			version, err := versions.ParseVersion(versionRaw)
-			if err != nil {
-				t.Fatalf("invalid component package version %q for %s: %s", versionRaw, pkgAddr, err)
-			}
-			componentDeprecations[pkgAddr.Namespace] = map[versions.Version]*ComponentPackageVersionDeprecation{
-				version: versionDeprecation,
-			}
-		}
-	}
-
 	fetcher := packageFetcherFunc(func(ctx context.Context, sourceType string, url *url.URL, targetDir string) (FetchSourcePackageResponse, error) {
 		var ret FetchSourcePackageResponse
 		for _, pkg := range remotePkgs {
@@ -657,23 +624,6 @@ func testingBuilderWithComponents(
 				return ret, nil
 			}
 			return ret, fmt.Errorf("no fake registry package matches %s", pkgAddr)
-		},
-		componentPackageVersions: func(ctx context.Context, pkgAddr regaddr.ComponentPackage) (ComponentPackageVersionsResponse, error) {
-			var ret ComponentPackageVersionsResponse
-			for _, pkg := range componentPkgs {
-				if pkg.pkgAddr != pkgAddr {
-					continue
-				}
-				ret.Versions = make([]ComponentPackageInfo, 0, len(pkg.versions))
-				for version := range pkg.versions {
-					ret.Versions = append(ret.Versions, ComponentPackageInfo{
-						Version:     version,
-						Deprecation: componentDeprecations[pkg.pkgAddr.Namespace][version],
-					})
-				}
-				return ret, nil
-			}
-			return ret, fmt.Errorf("no fake component registry package matches %s", pkgAddr)
 		},
 		componentPackageSourceAddr: func(ctx context.Context, pkgAddr regaddr.ComponentPackage, version versions.Version) (ComponentPackageSourceAddrResponse, error) {
 			var ret ComponentPackageSourceAddrResponse
