@@ -698,15 +698,15 @@ func testingBuilder(t *testing.T, targetDir string, remotePackages map[string]st
 		if err != nil {
 			t.Fatalf("invalid registry package address %q: %s", pkgAddrRaw, err)
 		}
-
+		if registryDeprecations[pkgAddr.Namespace] == nil {
+			registryDeprecations[pkgAddr.Namespace] = make(map[versions.Version]*ModulePackageVersionDeprecation)
+		}
 		for versionRaw, versionDeprecation := range deprecations {
 			version, err := versions.ParseVersion(versionRaw)
 			if err != nil {
 				t.Fatalf("invalid registry package version %q for %s: %s", versionRaw, pkgAddr, err)
 			}
-			registryDeprecations[pkgAddr.Namespace] = map[versions.Version]*ModulePackageVersionDeprecation{
-				version: versionDeprecation,
-			}
+			registryDeprecations[pkgAddr.Namespace][version] = versionDeprecation
 		}
 	}
 
@@ -850,8 +850,10 @@ func (f packageFetcherFunc) FetchSourcePackage(ctx context.Context, sourceType s
 }
 
 type registryClientFuncs struct {
-	modulePackageVersions   func(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error)
-	modulePackageSourceAddr func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error)
+	modulePackageVersions      func(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error)
+	modulePackageSourceAddr    func(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error)
+	componentPackageVersions   func(ctx context.Context, pkgAddr regaddr.ComponentPackage) (ComponentPackageVersionsResponse, error)
+	componentPackageSourceAddr func(ctx context.Context, pkgAddr regaddr.ComponentPackage, version versions.Version) (ComponentPackageSourceAddrResponse, error)
 }
 
 func (f registryClientFuncs) ModulePackageVersions(ctx context.Context, pkgAddr regaddr.ModulePackage) (ModulePackageVersionsResponse, error) {
@@ -860,6 +862,20 @@ func (f registryClientFuncs) ModulePackageVersions(ctx context.Context, pkgAddr 
 
 func (f registryClientFuncs) ModulePackageSourceAddr(ctx context.Context, pkgAddr regaddr.ModulePackage, version versions.Version) (ModulePackageSourceAddrResponse, error) {
 	return f.modulePackageSourceAddr(ctx, pkgAddr, version)
+}
+
+func (f registryClientFuncs) ComponentPackageVersions(ctx context.Context, pkgAddr regaddr.ComponentPackage) (ComponentPackageVersionsResponse, error) {
+	if f.componentPackageVersions == nil {
+		return ComponentPackageVersionsResponse{}, fmt.Errorf("no fake component registry package matches %s", pkgAddr)
+	}
+	return f.componentPackageVersions(ctx, pkgAddr)
+}
+
+func (f registryClientFuncs) ComponentPackageSourceAddr(ctx context.Context, pkgAddr regaddr.ComponentPackage, version versions.Version) (ComponentPackageSourceAddrResponse, error) {
+	if f.componentPackageSourceAddr == nil {
+		return ComponentPackageSourceAddrResponse{}, fmt.Errorf("no fake component registry package matches %s %s", pkgAddr, version)
+	}
+	return f.componentPackageSourceAddr(ctx, pkgAddr, version)
 }
 
 type noopDependencyFinder struct{}

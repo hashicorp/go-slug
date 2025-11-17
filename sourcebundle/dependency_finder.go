@@ -60,6 +60,7 @@ type Dependencies struct {
 
 	remoteCb          func(source sourceaddrs.RemoteSource, depFinder DependencyFinder)
 	registryCb        func(source sourceaddrs.RegistrySource, allowedVersions versions.Set, depFinder DependencyFinder)
+	componentCb       func(source sourceaddrs.ComponentSource, allowedVersions versions.Set, depFinder DependencyFinder)
 	localResolveErrCb func(err error)
 }
 
@@ -69,6 +70,10 @@ func (d *Dependencies) AddRemoteSource(source sourceaddrs.RemoteSource, depFinde
 
 func (d *Dependencies) AddRegistrySource(source sourceaddrs.RegistrySource, allowedVersions versions.Set, depFinder DependencyFinder) {
 	d.registryCb(source, allowedVersions, depFinder)
+}
+
+func (d *Dependencies) AddComponentSource(source sourceaddrs.ComponentSource, allowedVersions versions.Set, depFinder DependencyFinder) {
+	d.componentCb(source, allowedVersions, depFinder)
 }
 
 func (d *Dependencies) AddLocalSource(source sourceaddrs.LocalSource, depFinder DependencyFinder) {
@@ -91,5 +96,6 @@ func (d *Dependencies) AddLocalSource(source sourceaddrs.LocalSource, depFinder 
 func (d *Dependencies) disable() {
 	d.remoteCb = nil
 	d.registryCb = nil
+	d.componentCb = nil
 	d.localResolveErrCb = nil
 }
