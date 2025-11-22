@@ -649,6 +649,87 @@ func TestUnpack_HeaderOrdering(t *testing.T) {
 	}
 }
 
+func TestUnpack_DirectoryRootHeader(t *testing.T) {
+	testCases := []string{
+		".",
+		"/",
+	}
+	for _, tc := range testCases {
+		t.Run("with directory root '"+tc+"'", func(t *testing.T) {
+			dir, err := os.MkdirTemp("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer func() { _ = os.RemoveAll(dir) }()
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			headers := []struct {
+				name       string
+				data       string
+				headerType byte
+				mode       int64
+			}{
+				{name: tc, data: "", headerType: tar.TypeDir, mode: 0755},
+				{name: "file.txt", data: "file body", headerType: tar.TypeReg, mode: 0644},
+			}
+
+			for _, header := range headers {
+				var hdr tar.Header
+				data := header.data
+
+				hdr.Name = header.name
+				hdr.Typeflag = header.headerType
+				hdr.Mode = header.mode
+				if header.headerType == tar.TypeReg {
+					hdr.Size = int64(len(data))
+				}
+
+				_ = tarW.WriteHeader(&hdr)
+				if header.headerType == tar.TypeReg {
+					_, _ = tarW.Write([]byte(data))
+				}
+			}
+
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := os.MkdirTemp(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer func() { _ = os.RemoveAll(dst) }()
+
+			// Now try unpacking it.
+			if err := Unpack(fh, dst); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Verify all the files
+			verifyFile(t, filepath.Join(dst, "file.txt"), 0, "file body")
+		})
+	}
+}
+
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
@@ -1455,7 +1536,7 @@ func TestZipSlipProtection(t *testing.T) {
 	if _, err := os.Stat(extractedPath); err != nil {
 		t.Fatalf("File should have been safely extracted within destination: %v", err)
 	}
-	
+
 	t.Log("Zip Slip attack properly contained within extraction directory")
 }
 
@@ -1516,7 +1597,7 @@ func TestAbsoluteSymlinkContainment(t *testing.T) {
 	if !strings.Contains(err.Error(), "external target") {
 		t.Fatalf("Expected 'external target' error for absolute symlink, got: %v", err)
 	}
-	
+
 	t.Log("Absolute symlink properly rejected")
 }
 
@@ -1557,6 +1638,6 @@ func TestPlatformSpecificSecurity(t *testing.T) {
 	if _, err := root.Stat(testFile); err != nil {
 		t.Fatalf("File should exist within root: %v", err)
 	}
-	
+
 	t.Logf("Platform %s: os.Root basic operations working", runtime.GOOS)
 }

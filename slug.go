@@ -429,7 +429,8 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 
 		// Make the directories to the path using root for security.
 		dir := filepath.Dir(header.Name)
-		if dir != "." {
+		// The directory root already exists so we don't need to create it
+		if dir != "." && dir != "/" {
 			// Timestamps and permissions will be restored after all files are extracted.
 			if err := root.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %q: %w", dir, err)
