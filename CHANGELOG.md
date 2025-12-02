@@ -8,6 +8,16 @@
 
 ### Security
 
+## v0.18.1
+
+### Fixed
+- Fix incorrect absolute path errors for some tar formats (#116)
+
+## v0.18.0
+
+### Improvements
+- Add component registry source support (#115)
+
 ## v0.17.1
 
 ### Changes
