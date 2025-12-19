@@ -422,6 +422,13 @@ func (p *Packer) Unpack(r io.Reader, dst string) error {
 		}
 		header.Name = filepath.Clean(header.Name)
 
+		// Skip OSX metadata files (._* files) that macOS tar creates by default
+		// These files cause parse errors if they have file extensions like .hcl or .tf
+		basename := filepath.Base(header.Name)
+		if strings.HasPrefix(basename, "._") {
+			continue
+		}
+
 		info, err := unpackinfo.NewUnpackInfo(dst, header)
 		if err != nil {
 			return &IllegalSlugError{Err: err}
