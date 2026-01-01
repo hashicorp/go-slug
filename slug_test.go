@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package slug
@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -169,7 +169,7 @@ func TestPackWithoutIgnoring(t *testing.T) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 	}
@@ -236,11 +236,11 @@ func TestPack_symlinks(t *testing.T) {
 			tc.absolute, tc.external, tc.targetExists, tc.dereference)
 
 		t.Run(desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(td)
+			defer func() { _ = os.RemoveAll(td) }()
 
 			internal := filepath.Join(td, "internal")
 			if err := os.MkdirAll(internal, 0700); err != nil {
@@ -274,7 +274,7 @@ func TestPack_symlinks(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
 					t.Fatal(err)
 				}
-				if err := ioutil.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
+				if err := os.WriteFile(targetPath, []byte("foo"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -432,11 +432,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run("Pack: "+tc.desc, func(t *testing.T) {
-			td, err := ioutil.TempDir("", "go-slug")
+			td, err := os.MkdirTemp("", "go-slug")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(td)
+			defer func() { _ = os.RemoveAll(td) }()
 
 			// Make the symlink.
 			if err := os.Symlink(tc.target, filepath.Join(td, "sym")); err != nil {
@@ -495,11 +495,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 		})
 
 		t.Run("Unpack: "+tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -515,15 +515,15 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			// Write the header.
-			tarW.WriteHeader(&tar.Header{
+			_ = tarW.WriteHeader(&tar.Header{
 				Name:     "l",
 				Linkname: tc.target,
 				Typeflag: tar.TypeSymlink,
 			})
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -532,11 +532,11 @@ func TestAllowSymlinkTarget(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Unpack.
 			p, err := NewPacker(AllowSymlinkTarget(tc.allow))
@@ -567,11 +567,11 @@ func TestUnpack(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir("", "slug")
+	dst, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it.
 	if err := Unpack(slug, dst); err != nil {
@@ -649,12 +649,93 @@ func TestUnpack_HeaderOrdering(t *testing.T) {
 	}
 }
 
+func TestUnpack_DirectoryRootHeader(t *testing.T) {
+	testCases := []string{
+		".",
+		"/",
+	}
+	for _, tc := range testCases {
+		t.Run("with directory root '"+tc+"'", func(t *testing.T) {
+			dir, err := os.MkdirTemp("", "slug")
+			if err != nil {
+				t.Fatalf("err:%v", err)
+			}
+			defer func() { _ = os.RemoveAll(dir) }()
+			in := filepath.Join(dir, "slug.tar.gz")
+
+			// Create the output file
+			wfh, err := os.Create(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Gzip compress all the output data
+			gzipW := gzip.NewWriter(wfh)
+
+			// Tar the file contents
+			tarW := tar.NewWriter(gzipW)
+
+			headers := []struct {
+				name       string
+				data       string
+				headerType byte
+				mode       int64
+			}{
+				{name: tc, data: "", headerType: tar.TypeDir, mode: 0755},
+				{name: "file.txt", data: "file body", headerType: tar.TypeReg, mode: 0644},
+			}
+
+			for _, header := range headers {
+				var hdr tar.Header
+				data := header.data
+
+				hdr.Name = header.name
+				hdr.Typeflag = header.headerType
+				hdr.Mode = header.mode
+				if header.headerType == tar.TypeReg {
+					hdr.Size = int64(len(data))
+				}
+
+				_ = tarW.WriteHeader(&hdr)
+				if header.headerType == tar.TypeReg {
+					_, _ = tarW.Write([]byte(data))
+				}
+			}
+
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
+
+			// Open the slug file for reading.
+			fh, err := os.Open(in)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Create a dir to unpack into.
+			dst, err := os.MkdirTemp(dir, "")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer func() { _ = os.RemoveAll(dst) }()
+
+			// Now try unpacking it.
+			if err := Unpack(fh, dst); err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Verify all the files
+			verifyFile(t, filepath.Join(dst, "file.txt"), 0, "file body")
+		})
+	}
+}
+
 func TestUnpackDuplicateNoWritePerm(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	in := filepath.Join(dir, "slug.tar.gz")
 
 	// Create the output file
@@ -677,16 +758,16 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	hdr.Mode = 0100000 | 0400
 	hdr.Size = int64(len(data))
 
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	_ = tarW.WriteHeader(&hdr)
+	_, _ = tarW.Write([]byte(data))
 
 	// write it twice
-	tarW.WriteHeader(&hdr)
-	tarW.Write([]byte(data))
+	_ = tarW.WriteHeader(&hdr)
+	_, _ = tarW.Write([]byte(data))
 
-	tarW.Close()
-	gzipW.Close()
-	wfh.Close()
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
 
 	// Open the slug file for reading.
 	fh, err := os.Open(in)
@@ -695,11 +776,11 @@ func TestUnpackDuplicateNoWritePerm(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it.
 	if err := Unpack(fh, dst); err != nil {
@@ -740,11 +821,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -760,12 +841,12 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				_ = tarW.WriteHeader(hdr)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -774,11 +855,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it.
 			if err := Unpack(fh, dst); err != nil {
@@ -791,7 +872,7 @@ func TestUnpackPaxHeaders(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected file not to exist: %q", path)
 			}
-			defer fh.Close()
+			defer func() { _ = fh.Close() }()
 		})
 	}
 }
@@ -799,11 +880,11 @@ func TestUnpackPaxHeaders(t *testing.T) {
 // ensure Unpack returns an error when an unsupported file type is encountered
 // in an archive, rather than silently discarding the data.
 func TestUnpackErrorOnUnhandledType(t *testing.T) {
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	in := filepath.Join(dir, "slug.tar.gz")
 
 	// Create the output file
@@ -824,11 +905,11 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	hdr.Name = "l"
 	hdr.Size = int64(0)
 
-	tarW.WriteHeader(&hdr)
+	_ = tarW.WriteHeader(&hdr)
 
-	tarW.Close()
-	gzipW.Close()
-	wfh.Close()
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
 
 	// Open the slug file for reading.
 	fh, err := os.Open(in)
@@ -837,11 +918,11 @@ func TestUnpackErrorOnUnhandledType(t *testing.T) {
 	}
 
 	// Create a dir to unpack into.
-	dst, err := ioutil.TempDir(dir, "")
+	dst, err := os.MkdirTemp(dir, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer os.RemoveAll(dst)
+	defer func() { _ = os.RemoveAll(dst) }()
 
 	// Now try unpacking it, which should fail
 	if err := Unpack(fh, dst); err == nil {
@@ -955,11 +1036,11 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
 
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -975,12 +1056,12 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			tarW := tar.NewWriter(gzipW)
 
 			for _, hdr := range tc.headers {
-				tarW.WriteHeader(hdr)
+				_ = tarW.WriteHeader(hdr)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -989,11 +1070,11 @@ func TestUnpackMaliciousSymlinks(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it, which should fail
 			var e *IllegalSlugError
@@ -1025,11 +1106,11 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 
 	for _, tc := range tcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "slug")
+			dir, err := os.MkdirTemp("", "slug")
 			if err != nil {
 				t.Fatalf("err:%v", err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			in := filepath.Join(dir, "slug.tar.gz")
 
 			// Create the output file
@@ -1056,9 +1137,9 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 				t.Fatalf("err: %v", err)
 			}
 
-			tarW.Close()
-			gzipW.Close()
-			wfh.Close()
+			_ = tarW.Close()
+			_ = gzipW.Close()
+			_ = wfh.Close()
 
 			// Open the slug file for reading.
 			fh, err := os.Open(in)
@@ -1067,11 +1148,11 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 			}
 
 			// Create a dir to unpack into.
-			dst, err := ioutil.TempDir(dir, "")
+			dst, err := os.MkdirTemp(dir, "")
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			defer os.RemoveAll(dst)
+			defer func() { _ = os.RemoveAll(dst) }()
 
 			// Now try unpacking it, which should fail
 			var e *IllegalSlugError
@@ -1161,22 +1242,22 @@ func TestUnpackEmptyName(t *testing.T) {
 
 	tw := tar.NewWriter(gw)
 
-	tw.WriteHeader(&tar.Header{
+	_ = tw.WriteHeader(&tar.Header{
 		Typeflag: tar.TypeDir,
 	})
 
-	tw.Close()
-	gw.Close()
+	_ = tw.Close()
+	_ = gw.Close()
 
 	if buf.Len() == 0 {
 		t.Fatal("unable to create tar properly")
 	}
 
-	dir, err := ioutil.TempDir("", "slug")
+	dir, err := os.MkdirTemp("", "slug")
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	err = Unpack(&buf, dir)
 	if err != nil {
@@ -1210,7 +1291,7 @@ func assertArchiveFixture(t *testing.T, slug *bytes.Buffer, got *Meta) {
 		}
 
 		fileList = append(fileList, hdr.Name)
-		if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
+		if hdr.Typeflag == tar.TypeReg {
 			slugSize += hdr.Size
 		}
 
@@ -1364,7 +1445,7 @@ func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarg
 		}
 	}
 
-	if !((expectedMode == 0 && info.Mode().IsRegular()) || info.Mode()&expectedMode == 0) {
+	if expectedMode != 0 || !info.Mode().IsRegular() && info.Mode()&expectedMode != 0 {
 		t.Fatalf("wrong file mode for %q", dst)
 	}
 
@@ -1372,7 +1453,7 @@ func verifyFile(t *testing.T, dst string, expectedMode fs.FileMode, expectedTarg
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }()
 
 	raw := make([]byte, info.Size())
 	if _, err := fh.Read(raw); err != nil {
@@ -1393,4 +1474,170 @@ func verifyPerms(t *testing.T, path string, expect os.FileMode) {
 	if perm := fi.Mode().Perm(); perm != expect {
 		t.Fatalf("expect perms %o for path %s, got %o", expect, path, perm)
 	}
+}
+
+func TestZipSlipProtection(t *testing.T) {
+	// Test that classic Zip Slip attacks (../../etc/passwd) are properly contained
+	dir, err := os.MkdirTemp("", "zipslip")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	in := filepath.Join(dir, "slug.tar.gz")
+
+	// Create malicious archive with path traversal
+	wfh, err := os.Create(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipW := gzip.NewWriter(wfh)
+	tarW := tar.NewWriter(gzipW)
+
+	// Add a file that tries to escape via path traversal
+	_ = tarW.WriteHeader(&tar.Header{
+		Name:     "../../../evil_file.txt",
+		Typeflag: tar.TypeReg,
+		Size:     4,
+	})
+	_, _ = tarW.Write([]byte("evil"))
+
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
+
+	// Open and try to unpack
+	fh, err := os.Open(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = fh.Close() }()
+
+	dst, err := os.MkdirTemp(dir, "extract")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	} // This should either fail or safely contain the file within dst
+	err = Unpack(fh, dst)
+	if err != nil {
+		// If it fails, that's acceptable - it blocked the attack
+		t.Logf("Zip Slip attack blocked: %v", err)
+		return
+	}
+
+	// If it succeeded, verify the file is contained within dst
+	evilPath := filepath.Join(dir, "evil_file.txt")
+	if _, err := os.Stat(evilPath); err == nil {
+		t.Fatalf("Zip Slip attack succeeded! File escaped to: %s", evilPath)
+	}
+
+	// Verify the file is safely contained within the extraction directory
+	extractedPath := filepath.Join(dst, "evil_file.txt")
+	if _, err := os.Stat(extractedPath); err != nil {
+		t.Fatalf("File should have been safely extracted within destination: %v", err)
+	}
+
+	t.Log("Zip Slip attack properly contained within extraction directory")
+}
+
+func TestAbsoluteSymlinkContainment(t *testing.T) {
+	// Test that absolute path symlinks are safely handled by os.Root
+	dir, err := os.MkdirTemp("", "abslink")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	in := filepath.Join(dir, "slug.tar.gz")
+
+	// Create archive with absolute symlink
+	wfh, err := os.Create(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	gzipW := gzip.NewWriter(wfh)
+	tarW := tar.NewWriter(gzipW)
+
+	// Add symlink with absolute target
+	_ = tarW.WriteHeader(&tar.Header{
+		Name:     "abs_symlink",
+		Linkname: "/etc/passwd",
+		Typeflag: tar.TypeSymlink,
+	})
+
+	_ = tarW.Close()
+	_ = gzipW.Close()
+	_ = wfh.Close()
+
+	// Open and try to unpack
+	fh, err := os.Open(in)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = fh.Close() }()
+
+	dst, err := os.MkdirTemp(dir, "extract")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// According to os.Root docs: "Symbolic links must not be absolute"
+	// This should fail with the existing validation
+	err = Unpack(fh, dst)
+	if err == nil {
+		t.Fatalf("Expected absolute symlink to be rejected, but unpack succeeded")
+	}
+
+	var e *IllegalSlugError
+	if !errors.As(err, &e) {
+		t.Fatalf("Expected IllegalSlugError for absolute symlink, got %T: %v", err, err)
+	}
+
+	if !strings.Contains(err.Error(), "external target") {
+		t.Fatalf("Expected 'external target' error for absolute symlink, got: %v", err)
+	}
+
+	t.Log("Absolute symlink properly rejected")
+}
+
+func TestPlatformSpecificSecurity(t *testing.T) {
+	// Document platform-specific limitations of os.Root security
+	switch runtime.GOOS {
+	case "js":
+		t.Skip("os.Root has TOCTOU vulnerabilities on js platform")
+	case "plan9":
+		t.Skip("os.Root doesn't track directories across renames on plan9")
+	case "wasip1":
+		t.Skip("os.Root has limited functionality on wasip1")
+	}
+
+	// On supported platforms, verify basic containment works
+	dir, err := os.MkdirTemp("", "platform")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	// Test that os.Root can be created and basic operations work
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatalf("Failed to create os.Root: %v", err)
+	}
+	defer func() { _ = root.Close() }()
+
+	// Test basic file creation within root
+	testFile := "test.txt"
+	fh, err := root.Create(testFile)
+	if err != nil {
+		t.Fatalf("Failed to create file in root: %v", err)
+	}
+	_ = fh.Close()
+
+	// Verify file exists within the root directory
+	if _, err := root.Stat(testFile); err != nil {
+		t.Fatalf("File should exist within root: %v", err)
+	}
+
+	t.Logf("Platform %s: os.Root basic operations working", runtime.GOOS)
 }

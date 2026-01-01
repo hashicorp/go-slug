@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package sourceaddrs
@@ -45,6 +45,12 @@ func ParseFinalSource(given string) (FinalSource, error) {
 			return nil, fmt.Errorf("invalid module registry source address %q: %w", given, err)
 		}
 		return ret, nil
+	case looksLikeFinalComponentSource(given):
+		ret, err := ParseFinalComponentSource(given)
+		if err != nil {
+			return nil, fmt.Errorf("invalid component registry source address %q: %w", given, err)
+		}
+		return ret, nil
 	default:
 		// If it's neither a local source nor a final module registry source
 		// then we'll assume it's intended to be a remote source.
@@ -73,6 +79,8 @@ func FinalSourceFilename(addr FinalSource) string {
 	case RemoteSource:
 		return path.Base(addr.SubPath())
 	case RegistrySourceFinal:
+		return path.Base(addr.SubPath())
+	case ComponentSourceFinal:
 		return path.Base(addr.SubPath())
 	default:
 		// above should be exhaustive for all final source types
@@ -108,6 +116,16 @@ func ResolveRelativeFinalSource(a, b FinalSource) (FinalSource, error) {
 			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
 		}
 		return RegistrySource{
+			pkg:     a.Package(),
+			subPath: newSub,
+		}.Versioned(a.version), nil
+	case ComponentSourceFinal:
+		aSub := a.src.subPath
+		newSub, err := joinSubPath(aSub, bRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid traversal from %s: %w", a.String(), err)
+		}
+		return ComponentSource{
 			pkg:     a.Package(),
 			subPath: newSub,
 		}.Versioned(a.version), nil

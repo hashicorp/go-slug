@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package sourceaddrs
@@ -60,9 +60,10 @@ func ParseLocalSource(given string) (LocalSource, error) {
 	//   disambiguate from module registry addresses.
 	// - If the cleaned path is just "." or ".." then we need a slash on the end
 	//   because that's part of how we recognize an address as a relative path.
-	if clean == ".." {
+	switch clean {
+	case "..":
 		clean = "../"
-	} else if clean == "." {
+	case ".":
 		clean = "./"
 	}
 	if !looksLikeLocalSource(clean) {

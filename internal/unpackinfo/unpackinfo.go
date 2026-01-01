@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package unpackinfo
@@ -39,13 +39,23 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	dst = filepath.Clean(dst)
 	path := filepath.Clean(header.Name)
 
-	path = filepath.Join(dst, path)
-	target := filepath.Clean(path)
+	path = filepath.Clean(filepath.Join(dst, path))
+	target := path
 
 	// Check for path traversal by ensuring the target is within the destination
 	rel, err := filepath.Rel(dst, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil {
 		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
+	}
+
+	rel = filepath.Clean(rel)
+
+	rel_components := strings.Split(rel, string(os.PathSeparator))
+
+	for _, component := range rel_components {
+		if component == ".." {
+			return UnpackInfo{}, fmt.Errorf("invalid filename, traversal with \"..\" outside of current directory")
+		}
 	}
 
 	// Ensure the destination is not through any symlinks. This prevents
@@ -60,7 +70,7 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	// the mode on each to ensure we wouldn't be passing through any
 	// symlinks.
 	currentPath := dst // Start at the root of the unpacked tarball.
-	components := strings.Split(header.Name, "/")
+	components := strings.Split(filepath.Clean(header.Name), "/")
 
 	for i := 0; i < len(components)-1; i++ {
 		currentPath = filepath.Join(currentPath, components[i])
@@ -112,7 +122,7 @@ func (i UnpackInfo) IsTypeX() bool {
 
 // IsRegular describes whether the file being unpacked is a regular file
 func (i UnpackInfo) IsRegular() bool {
-	return i.Typeflag == tar.TypeReg || i.Typeflag == tar.TypeRegA
+	return i.Typeflag == tar.TypeReg
 }
 
 // RestoreInfo changes the file mode and timestamps for the given UnpackInfo data
@@ -127,6 +137,28 @@ func (i UnpackInfo) RestoreInfo() error {
 		return nil
 	default: // Normal file
 		return i.restoreNormal()
+	}
+}
+
+// RestoreInfoWithRoot changes the file mode and timestamps for the given UnpackInfo data
+// using os.Root for enhanced security to ensure operations stay within the destination
+func (i UnpackInfo) RestoreInfoWithRoot(root *os.Root, dst string) error {
+	// Calculate relative path from dst to i.Path for Root operations
+	relPath, err := filepath.Rel(dst, i.Path)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %w", err)
+	}
+
+	switch {
+	case i.IsDirectory():
+		return i.restoreDirectoryWithRoot(root, relPath)
+	case i.IsSymlink():
+		if CanMaintainSymlinkTimestamps() {
+			return i.restoreSymlinkWithRoot(root, relPath)
+		}
+		return nil
+	default: // Normal file
+		return i.restoreNormalWithRoot(root, relPath)
 	}
 }
 
@@ -154,6 +186,37 @@ func (i UnpackInfo) restoreNormal() error {
 	}
 
 	if err := os.Chtimes(i.Path, i.OriginalAccessTime, i.OriginalModTime); err != nil {
+		return fmt.Errorf("failed setting times on %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+func (i UnpackInfo) restoreDirectoryWithRoot(root *os.Root, relPath string) error {
+	if err := root.Chmod(relPath, i.OriginalMode); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed setting permissions on directory %q: %w", i.Path, err)
+	}
+
+	if err := root.Chtimes(relPath, i.OriginalAccessTime, i.OriginalModTime); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed setting times on directory %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+func (i UnpackInfo) restoreSymlinkWithRoot(root *os.Root, relPath string) error {
+	// Note: Go 1.25's os.Root doesn't have Lchtimes, so we fall back to the original method
+	// This is a limitation but still provides some security benefit for other operations
+	if err := i.Lchtimes(); err != nil {
+		return fmt.Errorf("failed setting times on symlink %q: %w", i.Path, err)
+	}
+	return nil
+}
+
+func (i UnpackInfo) restoreNormalWithRoot(root *os.Root, relPath string) error {
+	if err := root.Chmod(relPath, i.OriginalMode); err != nil {
+		return fmt.Errorf("failed setting permissions on %q: %w", i.Path, err)
+	}
+
+	if err := root.Chtimes(relPath, i.OriginalAccessTime, i.OriginalModTime); err != nil {
 		return fmt.Errorf("failed setting times on %q: %w", i.Path, err)
 	}
 	return nil

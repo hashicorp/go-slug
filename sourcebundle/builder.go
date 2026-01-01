@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package sourcebundle
@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -86,6 +85,21 @@ type Builder struct {
 	// matter.
 	registryPackageVersions map[regaddr.ModulePackage][]ModulePackageInfo
 
+	// pendingComponent is an unordered set of component artifacts that need to
+	// be translated into remote artifacts before further processing.
+	pendingComponent []componentArtifact
+
+	// resolvedComponent tracks the underlying remote source address for each
+	// selected version of each component registry package.
+	resolvedComponent map[componentPackageVersion]sourceaddrs.RemoteSource
+
+	// componentPackageVersions caches responses from component registry calls to
+	// look up the available versions for a particular component package. Although
+	// these could potentially change while we're running, we assume that the
+	// lifetime of a particular Builder is short enough for that not to
+	// matter.
+	componentPackageVersions map[regaddr.ComponentPackage][]ComponentPackageInfo
+
 	mu sync.Mutex
 }
 
@@ -115,6 +129,8 @@ func NewBuilder(targetDir string, fetcher PackageFetcher, registryClient Registr
 		resolvedRegistry:           make(map[registryPackageVersion]sourceaddrs.RemoteSource),
 		packageVersionDeprecations: make(map[registryPackageVersion]*RegistryVersionDeprecation),
 		registryPackageVersions:    make(map[regaddr.ModulePackage][]ModulePackageInfo),
+		resolvedComponent:          make(map[componentPackageVersion]sourceaddrs.RemoteSource),
+		componentPackageVersions:   make(map[regaddr.ComponentPackage][]ComponentPackageInfo),
 	}, nil
 }
 
@@ -191,6 +207,47 @@ func (b *Builder) AddFinalRegistrySource(ctx context.Context, addr sourceaddrs.R
 	return b.AddRegistrySource(ctx, addr.Unversioned(), allowedVersions, depFinder)
 }
 
+// AddComponentSource incorporates the component registry metadata for the given address
+// and the package associated with the latest version in allowedVersions
+// into the bundle, and then analyzes the new artifact for dependencies
+// using the given dependency finder.
+//
+// If you have already selected a specific version to install, consider using
+// [Builder.AddFinalComponentSource] instead.
+//
+// If the returned diagnostics contains errors then the bundle is left in an
+// inconsistent state and must not be used for any other calls.
+func (b *Builder) AddComponentSource(ctx context.Context, addr sourceaddrs.ComponentSource, allowedVersions versions.Set, depFinder DependencyFinder) Diagnostics {
+	if b.targetDir == "" {
+		// The builder has been closed, so cannot be modified further.
+		// This is always a bug in the caller, which should discard a builder
+		// as soon as it's been closed.
+		panic("AddComponentSource on closed sourcebundle.Builder")
+	}
+
+	b.mu.Lock()
+	b.pendingComponent = append(b.pendingComponent, componentArtifact{addr, allowedVersions, depFinder})
+	b.mu.Unlock()
+
+	return b.resolvePending(ctx)
+}
+
+// AddFinalComponentSource is a variant of [Builder.AddComponentSource] which
+// takes an already-selected version of a component source, instead of taking
+// a version constraint and then selecting the latest available version
+// matching that constraint.
+//
+// This function still asks the component registry for its set of available versions for
+// the unversioned package first, to ensure that the results from installing
+// from a final source will always be consistent with those from installing
+// from a not-yet-resolved component source.
+func (b *Builder) AddFinalComponentSource(ctx context.Context, addr sourceaddrs.ComponentSourceFinal, depFinder DependencyFinder) Diagnostics {
+	// We handle this just by turning the version selection into an exact
+	// version set and then installing from that as normal.
+	allowedVersions := versions.Only(addr.SelectedVersion())
+	return b.AddComponentSource(ctx, addr.Unversioned(), allowedVersions, depFinder)
+}
+
 // Close ensures that the target directory is in a valid and consistent state
 // to be used as a source bundle and then returns an object providing the
 // read-only API for that bundle.
@@ -247,7 +304,7 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 	// Note that the order of operations isn't actually important here and
 	// so we're consuming the "queues" in LIFO order instead of FIFO order,
 	// since that is easier to model using a Go slice.
-	for len(b.pendingRemote) > 0 || len(b.pendingRegistry) > 0 {
+	for len(b.pendingRemote) > 0 || len(b.pendingRegistry) > 0 || len(b.pendingComponent) > 0 {
 		// We'll consume items from the "registry" queue first because resolving
 		// this will contribute additional items to the "remote" queue.
 		for len(b.pendingRegistry) > 0 {
@@ -260,6 +317,28 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 					severity: DiagError,
 					summary:  "Cannot resolve module registry package",
 					detail:   fmt.Sprintf("Error resolving module registry source %s: %s.", next.sourceAddr, err),
+				})
+				continue
+			}
+
+			b.pendingRemote = append(b.pendingRemote, remoteArtifact{
+				sourceAddr: realSource,
+				depFinder:  next.depFinder,
+			})
+		}
+
+		// We'll also consume items from the "component" queue, which like the
+		// registry queue will contribute additional items to the "remote" queue.
+		for len(b.pendingComponent) > 0 {
+			next, remain := b.pendingComponent[len(b.pendingComponent)-1], b.pendingComponent[:len(b.pendingComponent)-1]
+			b.pendingComponent = remain
+
+			realSource, err := b.findComponentPackageSource(ctx, next.sourceAddr, next.versions)
+			if err != nil {
+				diags = append(diags, &internalDiagnostic{
+					severity: DiagError,
+					summary:  "Cannot resolve component registry package",
+					detail:   fmt.Sprintf("Error resolving component registry source %s: %s.", next.sourceAddr, err),
 				})
 				continue
 			}
@@ -311,6 +390,13 @@ func (b *Builder) resolvePending(ctx context.Context) (diags Diagnostics) {
 					},
 					registryCb: func(source sourceaddrs.RegistrySource, allowedVersions versions.Set, depFinder DependencyFinder) {
 						b.pendingRegistry = append(b.pendingRegistry, registryArtifact{
+							sourceAddr: source,
+							versions:   allowedVersions,
+							depFinder:  depFinder,
+						})
+					},
+					componentCb: func(source sourceaddrs.ComponentSource, allowedVersions versions.Set, depFinder DependencyFinder) {
+						b.pendingComponent = append(b.pendingComponent, componentArtifact{
 							sourceAddr: source,
 							versions:   allowedVersions,
 							depFinder:  depFinder,
@@ -447,6 +533,53 @@ func (b *Builder) findRegistryPackageSource(ctx context.Context, sourceAddr sour
 	return realSourceAddr, nil
 }
 
+func (b *Builder) findComponentPackageSource(ctx context.Context, sourceAddr sourceaddrs.ComponentSource, allowedVersions versions.Set) (sourceaddrs.RemoteSource, error) {
+	// NOTE: This expects to be called while b.mu is already locked.
+
+	pkgAddr := sourceAddr.Package()
+	availablePackageInfos, ok := b.componentPackageVersions[pkgAddr]
+	var availableVersions versions.List
+	if !ok {
+		resp, err := b.registryClient.ComponentPackageVersions(ctx, pkgAddr)
+		if err != nil {
+			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to query available versions for %s: %w", pkgAddr, err)
+		}
+
+		availablePackageInfos = resp.Versions
+		b.componentPackageVersions[pkgAddr] = resp.Versions
+		availableVersions = extractVersionListFromComponentResponse(availablePackageInfos)
+	} else {
+		availableVersions = extractVersionListFromComponentResponse(availablePackageInfos)
+	}
+
+	selectedVersion := availableVersions.NewestInSet(allowedVersions)
+	if selectedVersion == versions.Unspecified {
+		return sourceaddrs.RemoteSource{}, fmt.Errorf("no available version of %s matches the given constraints", pkgAddr)
+	}
+
+	pkgVer := componentPackageVersion{
+		pkg:     pkgAddr,
+		version: selectedVersion,
+	}
+	realSourceAddr, ok := b.resolvedComponent[pkgVer]
+	if !ok {
+		resp, err := b.registryClient.ComponentPackageSourceAddr(ctx, pkgAddr, selectedVersion)
+		if err != nil {
+			return sourceaddrs.RemoteSource{}, fmt.Errorf("failed to find real source address for %s %s: %w", pkgAddr, selectedVersion, err)
+		}
+		realSourceAddr = resp.SourceAddr
+		b.resolvedComponent[pkgVer] = realSourceAddr
+	}
+
+	// If our original source address had its own sub-path component then we
+	// need to combine that with the one in realSourceAddr to get the correct
+	// final path: the sourceAddr subpath is relative to the realSourceAddr
+	// subpath.
+	realSourceAddr = sourceAddr.FinalSourceAddr(realSourceAddr)
+
+	return realSourceAddr, nil
+}
+
 func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.RemotePackage) (localDir string, err error) {
 	// NOTE: This expects to be called while b.mu is already locked.
 
@@ -483,7 +616,7 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 	// We'll eventually name our local directory after a checksum of its
 	// content, but we don't know its content yet so we'll use a temporary
 	// name while we work on getting it populated.
-	workDir, err := ioutil.TempDir(b.targetDir, ".tmp-")
+	workDir, err := os.MkdirTemp(b.targetDir, ".tmp-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create new package directory: %w", err)
 	}
@@ -578,6 +711,17 @@ func (b *Builder) ensureRemotePackage(ctx context.Context, pkgAddr sourceaddrs.R
 }
 
 func (b *Builder) writeManifest(filename string) error {
+	// Extract directory and filename for secure Root access
+	dir := filepath.Dir(filename)
+	name := filepath.Base(filename)
+
+	// Use os.Root for secure file writing within the target directory
+	targetRoot, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("cannot open target directory %q: %w", dir, err)
+	}
+	defer func() { _ = targetRoot.Close() }()
+
 	var root manifestRoot
 	root.FormatVersion = 1
 
@@ -625,11 +769,31 @@ func (b *Builder) writeManifest(filename string) error {
 		return root.RegistryMeta[i].SourceAddr < root.RegistryMeta[j].SourceAddr
 	})
 
+	componentObjs := make(map[regaddr.ComponentPackage]*manifestComponentMeta)
+	for cpv, sourceInfo := range b.resolvedComponent {
+		manifestMeta, ok := componentObjs[cpv.pkg]
+		if !ok {
+			root.ComponentMeta = append(root.ComponentMeta, manifestComponentMeta{
+				SourceAddr: cpv.pkg.String(),
+				Versions:   make(map[string]manifestRegistryVersion),
+			})
+			manifestMeta = &root.ComponentMeta[len(root.ComponentMeta)-1]
+			componentObjs[cpv.pkg] = manifestMeta
+		}
+		manifestMeta.Versions[cpv.version.String()] = manifestRegistryVersion{
+			SourceAddr: sourceInfo.String(),
+		}
+	}
+
+	sort.Slice(root.ComponentMeta, func(i, j int) bool {
+		return root.ComponentMeta[i].SourceAddr < root.ComponentMeta[j].SourceAddr
+	})
+
 	buf, err := json.MarshalIndent(&root, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to serialize to JSON: %#w", err)
 	}
-	err = os.WriteFile(filename, buf, 0664)
+	err = targetRoot.WriteFile(name, buf, 0664)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %#w", err)
 	}
@@ -650,6 +814,17 @@ type registryArtifact struct {
 
 type registryPackageVersion struct {
 	pkg     regaddr.ModulePackage
+	version versions.Version
+}
+
+type componentArtifact struct {
+	sourceAddr sourceaddrs.ComponentSource
+	versions   versions.Set
+	depFinder  DependencyFinder
+}
+
+type componentPackageVersion struct {
+	pkg     regaddr.ComponentPackage
 	version versions.Version
 }
 
@@ -676,6 +851,11 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 			err := os.RemoveAll(absPath)
 			if err != nil {
 				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
+			}
+			// Account for .terraformignore file rulesets that remove entire subtrees
+			// in order to skip additional reads.
+			if info.IsDir() {
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -737,7 +917,7 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 		if err != nil {
 			return fmt.Errorf("failed to stat %q: %w", realPath, err)
 		}
-		if !(lInfo.Mode().IsRegular() || lInfo.Mode().IsDir()) {
+		if !lInfo.Mode().IsRegular() && !lInfo.Mode().IsDir() {
 			return fmt.Errorf("module package path %q is not a regular file or directory", relPath)
 		}
 
@@ -748,6 +928,15 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 func extractVersionListFromResponse(modPackageInfos []ModulePackageInfo) versions.List {
 	vs := make(versions.List, len(modPackageInfos))
 	for index, v := range modPackageInfos {
+		vs[index] = v.Version
+	}
+	vs.Sort()
+	return vs
+}
+
+func extractVersionListFromComponentResponse(componentPackageInfos []ComponentPackageInfo) versions.List {
+	vs := make(versions.List, len(componentPackageInfos))
+	for index, v := range componentPackageInfos {
 		vs[index] = v.Version
 	}
 	vs.Sort()

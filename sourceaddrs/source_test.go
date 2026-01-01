@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package sourceaddrs
@@ -232,11 +232,50 @@ func TestParseSource(t *testing.T) {
 			},
 		},
 		{
+			Given: "github.com/hashicorp/stacks.git//path/to/dir",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git"),
+				},
+				subPath: "path/to/dir",
+			},
+		},
+		{
+			Given: "github.com/hashicorp/stacks//path/to/dir?ref=main",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git?ref=main"),
+				},
+				subPath: "path/to/dir",
+			},
+		},
+		{
 			Given: "github.com/hashicorp/go-slug/bleep",
 			Want: RemoteSource{
 				pkg: RemotePackage{
 					sourceType: "git",
 					url:        *mustParseURL("https://github.com/hashicorp/go-slug.git"),
+				},
+				subPath: "bleep",
+			},
+		},
+		{
+			Given: "github.com/hashicorp/stacks?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git?ref=v4.8.0"),
+				},
+			},
+		},
+		{
+			Given: "github.com/hashicorp/stacks/bleep?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://github.com/hashicorp/stacks.git?ref=v4.8.0"),
 				},
 				subPath: "bleep",
 			},
@@ -257,6 +296,45 @@ func TestParseSource(t *testing.T) {
 					sourceType: "git",
 					url:        *mustParseURL("https://gitlab.com/hashicorp/go-slug.git"),
 				},
+			},
+		},
+		{
+			Given: "gitlab.com/hashicorp/stacks?ref=v4.8.0",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git?ref=v4.8.0"),
+				},
+			},
+		},
+		{
+			Given: "gitlab.com/hashicorp/stacks.git//path/to/dir",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git"),
+				},
+				subPath: "path/to/dir",
+			},
+		},
+		{
+			Given: "gitlab.com/hashicorp/stacks//path/to/dir?ref=main",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git?ref=main"),
+				},
+				subPath: "path/to/dir",
+			},
+		},
+		{
+			Given: "gitlab.com/hashicorp/stacks.git//path/to/dir?ref=main",
+			Want: RemoteSource{
+				pkg: RemotePackage{
+					sourceType: "git",
+					url:        *mustParseURL("https://gitlab.com/hashicorp/stacks.git?ref=main"),
+				},
+				subPath: "path/to/dir",
 			},
 		},
 		{
@@ -396,6 +474,10 @@ func TestParseSource(t *testing.T) {
 		{
 			Given:   "https://:bar@example.com/foo.tgz",
 			WantErr: `invalid remote source address "https://:bar@example.com/foo.tgz": must not use username or password in URL portion`,
+		},
+		{
+			Given:   "github.com/hashicorp/stacks//path/to/dir//invalid?ref=main",
+			WantErr: `invalid remote source address "github.com/hashicorp/stacks//path/to/dir//invalid?ref=main": invalid sub-path: must be slash-separated relative path without any .. or . segments`,
 		},
 	}
 

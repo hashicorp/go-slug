@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 // Package ignorefiles deals with the ".terraformignore" file format, which
@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
 // A Ruleset is the result of reading, parsing, and compiling a
@@ -48,14 +47,21 @@ func ParseIgnoreFileContent(r io.Reader) (*Ruleset, error) {
 // This function will return an error only if an ignore file is present but
 // unreadable, or if an ignore file is present but contains invalid syntax.
 func LoadPackageIgnoreRules(packageDir string) (*Ruleset, error) {
-	file, err := os.Open(filepath.Join(packageDir, ".terraformignore"))
+	// Use os.Root for secure file access within the package directory
+	packageRoot, err := os.OpenRoot(packageDir)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open package directory %q: %s", packageDir, err)
+	}
+	defer func() { _ = packageRoot.Close() }()
+
+	file, err := packageRoot.Open(".terraformignore")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return DefaultRuleset, nil
 		}
 		return nil, fmt.Errorf("cannot read .terraformignore: %s", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	ret, err := ParseIgnoreFileContent(file)
 	if err != nil {

@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package sourceaddrs
@@ -68,10 +68,11 @@ func ParseRemoteSource(given string) (RemoteSource, error) {
 	u.Scheme = strings.ToLower(u.Scheme)
 	sourceType = strings.ToLower(sourceType)
 
-	if sourceType == "" {
+	switch sourceType {
+	case "":
 		// sourceType defaults to the URL scheme if not explicitly set.
 		sourceType = u.Scheme
-	} else if sourceType == u.Scheme {
+	case u.Scheme:
 		// This catches weirdo constructions like: https::https://example.com/
 		return RemoteSource{}, fmt.Errorf("don't specify redundant %q source type for %q URL", sourceType, u.Scheme)
 	}
@@ -162,7 +163,12 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			return "", false, nil
 		}
 
-		parts := strings.Split(given, "/")
+		url, query, _ := strings.Cut(given, "?")
+		if len(query) > 0 {
+			query = "?" + query
+		}
+
+		parts := strings.Split(url, "/")
 		if len(parts) < 3 {
 			return "", false, fmt.Errorf("GitHub.com shorthand addresses must start with github.com/organization/repository")
 		}
@@ -175,10 +181,10 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + strings.Join(parts[3:], "/")
+			urlStr += "//" + trimSubpath(parts[3:])
 		}
 
-		return "git::" + urlStr, true, nil
+		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
 	},
 	func(given string) (string, bool, error) {
 		// Allows a gitlab.com repository to be presented in a scheme-less
@@ -195,7 +201,12 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			return "", false, nil
 		}
 
-		parts := strings.Split(given, "/")
+		url, query, _ := strings.Cut(given, "?")
+		if len(query) > 0 {
+			query = "?" + query
+		}
+
+		parts := strings.Split(url, "/")
 		if len(parts) < 3 {
 			return "", false, fmt.Errorf("GitLab.com shorthand addresses must start with gitlab.com/organization/repository")
 		}
@@ -208,7 +219,7 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 		if len(parts) > 3 {
 			// The remaining parts will become the sub-path portion, since
 			// the repository as a whole is the source package.
-			urlStr += "//" + strings.Join(parts[3:], "/")
+			urlStr += "//" + trimSubpath(parts[3:])
 			// NOTE: We can't actually get here if there are exactly four
 			// parts, because gitlab.com is also a Terraform module registry
 			// and so gitlab.com/a/b/c must be interpreted as a registry
@@ -217,8 +228,23 @@ var remoteSourceShorthands = []remoteSourceShorthand{
 			// refer to a Git repository.
 		}
 
-		return "git::" + urlStr, true, nil
+		return fmt.Sprintf("git::%s%s", urlStr, query), true, nil
 	},
+}
+
+// Removes the first leading empty string from the slice,
+// if present. Subsequent empty strings (such as those resulting from consecutive
+// slashes, e.g., "//") are preserved in their positions.
+func trimSubpath(parts []string) string {
+	filtered := []string{}
+	for i, p := range parts {
+		// Only filter leading empty positions in slice
+		if p != "" || i > 0 {
+			filtered = append(filtered, p)
+		}
+	}
+
+	return strings.Join(filtered, "/")
 }
 
 var remoteSourceTypePattern = regexp.MustCompile(`^([A-Za-z0-9]+)::(.+)$`)
