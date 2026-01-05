@@ -1641,3 +1641,116 @@ func TestPlatformSpecificSecurity(t *testing.T) {
 
 	t.Logf("Platform %s: os.Root basic operations working", runtime.GOOS)
 }
+
+func TestUnpack_SkipsOSXMetadataFiles(t *testing.T) {
+	// Create a tar.gz archive that includes OSX metadata files (._* files)
+	slug := bytes.NewBuffer(nil)
+	gzipWriter := gzip.NewWriter(slug)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	// Add a normal .hcl file
+	normalFile := "config.hcl"
+	normalContent := "# This is a normal HCL file\n"
+	if err := tarWriter.WriteHeader(&tar.Header{
+		Name:     normalFile,
+		Size:     int64(len(normalContent)),
+		Mode:     0644,
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatalf("failed to write header: %v", err)
+	}
+	if _, err := tarWriter.Write([]byte(normalContent)); err != nil {
+		t.Fatalf("failed to write content: %v", err)
+	}
+
+	// Add an OSX metadata file (._config.hcl with binary content)
+	metadataFile := "._config.hcl"
+	// OSX metadata files contain binary data
+	metadataContent := []byte{0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00}
+	if err := tarWriter.WriteHeader(&tar.Header{
+		Name:     metadataFile,
+		Size:     int64(len(metadataContent)),
+		Mode:     0644,
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatalf("failed to write header: %v", err)
+	}
+	if _, err := tarWriter.Write(metadataContent); err != nil {
+		t.Fatalf("failed to write content: %v", err)
+	}
+
+	// Add another OSX metadata file in a subdirectory
+	subMetadataFile := "subdir/._other.tf"
+	if err := tarWriter.WriteHeader(&tar.Header{
+		Name:     subMetadataFile,
+		Size:     int64(len(metadataContent)),
+		Mode:     0644,
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatalf("failed to write header: %v", err)
+	}
+	if _, err := tarWriter.Write(metadataContent); err != nil {
+		t.Fatalf("failed to write content: %v", err)
+	}
+
+	// Add a normal file in the subdirectory
+	subNormalFile := "subdir/other.tf"
+	subNormalContent := "# Normal terraform file\n"
+	if err := tarWriter.WriteHeader(&tar.Header{
+		Name:     subNormalFile,
+		Size:     int64(len(subNormalContent)),
+		Mode:     0644,
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatalf("failed to write header: %v", err)
+	}
+	if _, err := tarWriter.Write([]byte(subNormalContent)); err != nil {
+		t.Fatalf("failed to write content: %v", err)
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("failed to close tar writer: %v", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("failed to close gzip writer: %v", err)
+	}
+
+	// Create a destination directory
+	dst, err := os.MkdirTemp("", "slug-osx-metadata")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(dst) }()
+
+	// Unpack the archive
+	if err := Unpack(slug, dst); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Verify that normal files were extracted
+	normalFilePath := filepath.Join(dst, normalFile)
+	if _, err := os.Stat(normalFilePath); err != nil {
+		t.Errorf("Normal file should exist: %v", err)
+	}
+
+	subNormalFilePath := filepath.Join(dst, subNormalFile)
+	if _, err := os.Stat(subNormalFilePath); err != nil {
+		t.Errorf("Subdirectory normal file should exist: %v", err)
+	}
+
+	// Verify that OSX metadata files were NOT extracted
+	metadataFilePath := filepath.Join(dst, metadataFile)
+	if _, err := os.Stat(metadataFilePath); err == nil {
+		t.Errorf("OSX metadata file should not exist: %s", metadataFilePath)
+	} else if !os.IsNotExist(err) {
+		t.Errorf("Unexpected error checking metadata file: %v", err)
+	}
+
+	subMetadataFilePath := filepath.Join(dst, subMetadataFile)
+	if _, err := os.Stat(subMetadataFilePath); err == nil {
+		t.Errorf("Subdirectory OSX metadata file should not exist: %s", subMetadataFilePath)
+	} else if !os.IsNotExist(err) {
+		t.Errorf("Unexpected error checking subdirectory metadata file: %v", err)
+	}
+}
+
