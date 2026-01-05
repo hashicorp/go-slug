@@ -8,6 +8,11 @@
 
 ### Security
 
+## v0.18.2
+
+### Fixed
+- Filter OSX metadata files during tar extraction (#119)
+
 ## v0.18.1
 
 ### Fixed
