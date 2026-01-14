@@ -1,0 +1,36 @@
+name: "Dry Run Build"
+
+on:
+  push:
+    branches:
+      - 'pull/*' # Trigger specifically on your current branch
+
+jobs:
+  test-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build & Package
+        run: |
+          mkdir -p dist
+          # If go-slug has no main.go, this build might fail, 
+          # so we add '|| echo "No binary created"' to keep the script running
+          go build -v -o dist/go-slug-linux . || echo "Library only, no binary created"
+          
+          # This creates the artifact from the contents of the dist folder
+          tar -czvf compliance-artifact.tar.gz -C dist .
+          mv compliance-artifact.tar.gz dist/
+
+      - name: Upload for Inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-binary-IND-6310
+          path: dist/compliance-artifact.tar.gz
+          retention-days: 1

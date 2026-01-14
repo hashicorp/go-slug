@@ -1,0 +1,37 @@
+name: "Artifact Create"
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers ONLY on version tags (v1.0.0, etc.)
+
+jobs:
+  release-artifact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to create the Release entry
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build Production Binary
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/go-slug-linux .
+          # Packaging the artifact for compliance
+          tar -czvf dist/go-slug-pro-artifact.tar.gz -C dist .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/go-slug-pro-artifact.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: true
