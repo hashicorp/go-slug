@@ -5,6 +5,7 @@
 ### Changes
 
 ### Fixed
+- Resolve relative symlink targets when the pack root itself is a symlink (#129)
 
 ### Security
 

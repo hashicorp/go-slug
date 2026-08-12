@@ -152,12 +152,22 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 		return nil, err
 	}
 
-	// Check if the root (src) is a symlink
+	// Check if the root (src) is a symlink. Readlink returns the raw
+	// target, which may be relative to the symlink's parent rather than
+	// the process working directory.
 	if isSymlink(info.Mode()) {
-		src, err = os.Readlink(src)
+		srcAbs, absErr := filepath.Abs(src)
+		if absErr != nil {
+			return nil, fmt.Errorf("failed to read absolute path for source: %w", absErr)
+		}
+		linkTarget, err := os.Readlink(src)
 		if err != nil {
 			return nil, err
 		}
+		if !filepath.IsAbs(linkTarget) {
+			linkTarget = filepath.Join(filepath.Dir(srcAbs), linkTarget)
+		}
+		src = filepath.Clean(linkTarget)
 	}
 
 	// Load the ignore rule configuration, which will use

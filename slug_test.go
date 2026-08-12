@@ -73,7 +73,7 @@ func TestPack_rootIsSymlink(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("target is path: %s", path), func(t *testing.T) {
 			symlinkPath := path + "-symlink"
-			err := os.Symlink(path, symlinkPath)
+			err := os.Symlink(filepath.Base(filepath.Clean(path)), symlinkPath)
 			if err != nil {
 				t.Fatalf("Failed creating dir %s symlink: %v", path, err)
 
@@ -93,6 +93,63 @@ func TestPack_rootIsSymlink(t *testing.T) {
 
 			assertArchiveFixture(t, slug, meta)
 		})
+	}
+}
+
+func TestPack_rootIsRelativeSymlinkFromOtherCwd(t *testing.T) {
+	tmp := t.TempDir()
+	realDir := filepath.Join(tmp, "work", "projects", "real")
+	if err := os.MkdirAll(realDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "main.tf"), []byte("resource \"null_resource\" \"x\" {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkParent := filepath.Join(tmp, "home")
+	if err := os.MkdirAll(linkParent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(linkParent, "i")
+	relTarget := filepath.Join("..", "work", "projects", "real")
+	if err := os.Symlink(relTarget, linkPath); err != nil {
+		t.Fatalf("failed creating relative symlink: %v", err)
+	}
+
+	otherCwd := filepath.Join(tmp, "other", "cwd")
+	if err := os.MkdirAll(otherCwd, 0700); err != nil {
+		t.Fatal(err)
+	}
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(otherCwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(orig); err != nil {
+			t.Errorf("failed restoring working directory: %v", err)
+		}
+	})
+
+	slug := bytes.NewBuffer(nil)
+	meta, err := Pack(linkPath, slug, true)
+	if err != nil {
+		t.Fatalf("Pack with relative symlink root from other cwd: %v", err)
+	}
+	if meta == nil || len(meta.Files) == 0 {
+		t.Fatal("expected packed files from the resolved symlink target")
+	}
+	found := false
+	for _, name := range meta.Files {
+		if name == "main.tf" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected main.tf in packed files, got %v", meta.Files)
 	}
 }
 
