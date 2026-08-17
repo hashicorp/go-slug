@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"text/scanner"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 func readRules(input io.Reader) ([]rule, error) {
@@ -75,6 +77,12 @@ type rule struct {
 	regex          *regexp.Regexp // regular expression to match for the rule
 }
 
+// normalizeUnicode normalizes a string to NFC (Canonical Composition) form
+// to ensure consistent matching across different Unicode representations.
+func normalizeUnicode(s string) string {
+	return norm.NFC.String(s)
+}
+
 func (r *rule) match(path string) (bool, error) {
 	if r.regex == nil {
 		if err := r.compile(); err != nil {
@@ -82,13 +90,16 @@ func (r *rule) match(path string) (bool, error) {
 		}
 	}
 
-	b := r.regex.MatchString(path)
+	// Normalize path to ensure consistent matching across different Unicode formats
+	normalizedPath := normalizeUnicode(path)
+	b := r.regex.MatchString(normalizedPath)
 	return b, nil
 }
 
 func (r *rule) compile() error {
 	regStr := "^"
-	pattern := r.val
+	// Normalize pattern to ensure consistent matching across different Unicode formats
+	pattern := normalizeUnicode(r.val)
 	// Go through the pattern and convert it to a regexp.
 	// Use a scanner to support utf-8 chars.
 	var scan scanner.Scanner
