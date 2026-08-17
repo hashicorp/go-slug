@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2018, 2025
+// Copyright IBM Corp. 2018, 2026
 // SPDX-License-Identifier: MPL-2.0
 
 package slug
@@ -1754,3 +1754,83 @@ func TestUnpack_SkipsOSXMetadataFiles(t *testing.T) {
 	}
 }
 
+
+// TestPack_UnicodeNormalization verifies that a .terraformignore rule written in NFC
+// correctly excludes a file whose name is byte-identical when decoded but stored in NFD
+// (the form macOS APFS/HFS+ returns from ReadDir). The excluded file must be absent from
+// the resulting slug archive; a control file must be present.
+func TestPack_UnicodeNormalization(t *testing.T) {
+	// NFD form: "donne\u0301es.txt"  (e + combining acute accent)
+	// NFC form: "donn\u00e9es.txt"   (single precomposed é)
+	// The .terraformignore is written in NFC; the file is created with the NFD name.
+	const (
+		nfcPattern = "donn\u00e9es.txt"  // NFC: precomposed é
+		nfdFile    = "donne\u0301es.txt" // NFD: e + combining acute
+		controlFile = "allowed.txt"
+	)
+
+	td, err := os.MkdirTemp("", "go-slug-unicode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(td) }()
+
+	// Write .terraformignore with the NFC pattern.
+	if err := os.WriteFile(filepath.Join(td, ".terraformignore"),
+		[]byte(nfcPattern+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the file with an NFD name (as APFS would present it).
+	if err := os.WriteFile(filepath.Join(td, nfdFile), []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a control file that must survive in the archive.
+	if err := os.WriteFile(filepath.Join(td, controlFile), []byte("ok"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	slug := bytes.NewBuffer(nil)
+	if _, err := Pack(td, slug, true); err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+
+	// Walk the tar archive and collect all entry names.
+	gzipR, err := gzip.NewReader(slug)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	tarR := tar.NewReader(gzipR)
+
+	var found []string
+	for {
+		hdr, err := tarR.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar.Next: %v", err)
+		}
+		found = append(found, hdr.Name)
+	}
+
+	// The NFD-named file (and its NFC equivalent) must not appear in the archive.
+	for _, name := range found {
+		if name == nfdFile || name == nfcPattern {
+			t.Errorf("excluded Unicode file %q leaked into the slug archive", name)
+		}
+	}
+
+	// The control file must be present.
+	controlFound := false
+	for _, name := range found {
+		if name == controlFile {
+			controlFound = true
+			break
+		}
+	}
+	if !controlFound {
+		t.Errorf("control file %q missing from slug archive; found: %v", controlFile, found)
+	}
+}
