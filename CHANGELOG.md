@@ -3,6 +3,7 @@
 ### Improvements
 
 ### Changes
+- Use `filepath.IsLocal` to validate archive entry paths
 
 ### Fixed
 
