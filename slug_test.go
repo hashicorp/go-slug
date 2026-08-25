@@ -1095,12 +1095,12 @@ func TestUnpackMaliciousFiles(t *testing.T) {
 		{
 			desc: "filename containing path traversal",
 			name: "../../../../../../../../tmp/test",
-			err:  "invalid filename, traversal with \"..\" outside of current directory",
+			err:  "invalid filename, traversal outside of current directory",
 		},
 		{
 			desc: "should fail before attempting to create directories",
 			name: "../../../../../../../../Users/root",
-			err:  "invalid filename, traversal with \"..\" outside of current directory",
+			err:  "invalid filename, traversal outside of current directory",
 		},
 	}
 
