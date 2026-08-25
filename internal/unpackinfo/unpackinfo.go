@@ -51,7 +51,7 @@ func NewUnpackInfo(dst string, header *tar.Header) (UnpackInfo, error) {
 	rel = filepath.Clean(rel)
 
 	if !filepath.IsLocal(rel) {
-		return UnpackInfo{}, errors.New("invalid filename, traversal with \"..\" outside of current directory")
+		return UnpackInfo{}, errors.New("invalid filename, traversal outside of current directory")
 	}
 
 	// Ensure the destination is not through any symlinks. This prevents
