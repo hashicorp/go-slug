@@ -26,7 +26,7 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		expected := "invalid filename, traversal with \"..\""
+		expected := "invalid filename, traversal outside of current directory"
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %q, got %q", expected, err)
 		}
@@ -91,7 +91,7 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		expected := "traversal with \"..\" outside of current"
+		expected := "traversal outside of current"
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %q, got %q", expected, err)
 		}
@@ -139,7 +139,7 @@ func TestNewUnpackInfo(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		expected := "traversal with \"..\" outside of current"
+		expected := "traversal outside of current"
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %q, got %q", expected, err)
 		}
@@ -319,25 +319,25 @@ func TestNewUnpackInfoPathTraversalVariants(t *testing.T) {
 			name:     "simple parent traversal",
 			filename: "../outside",
 			wantErr:  true,
-			errMsg:   "traversal with \"..\"",
+			errMsg:   "traversal outside of current directory",
 		},
 		{
 			name:     "multiple parent traversal",
 			filename: "../../outside",
 			wantErr:  true,
-			errMsg:   "traversal with \"..\"",
+			errMsg:   "traversal outside of current directory",
 		},
 		{
 			name:     "start with ./ followed with ..",
 			filename: "./../../outside",
 			wantErr:  true,
-			errMsg:   "traversal with \"..\"",
+			errMsg:   "traversal outside of current directory",
 		},
 		{
 			name:     "mixed path with traversal",
 			filename: "subdir/../../../outside",
 			wantErr:  true,
-			errMsg:   "traversal with \"..\"",
+			errMsg:   "traversal outside of current directory",
 		},
 		{
 			name:     "absolute path gets cleaned to relative",
