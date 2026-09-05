@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	regaddr "github.com/hashicorp/terraform-registry-address"
 
+	"github.com/hashicorp/go-slug/internal/ignorefiles"
 	"github.com/hashicorp/go-slug/sourceaddrs"
 )
 
@@ -524,6 +525,54 @@ func TestBuilderTerraformIgnore(t *testing.T) {
 		t.Errorf(".excluded dir exists; should have been removed")
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf(".excluded dir exists but is not readable; should have been removed altogether")
+	}
+}
+
+func TestPackagePrepareWalkFnDirectoryNegation(t *testing.T) {
+	// A broad * exclusion matches the separator-less directory path "infra"
+	// before the documented directory negation !/infra/ is evaluated. The
+	// walker must not prune the directory in that case, or re-included
+	// descendants are lost.
+	root := t.TempDir()
+
+	keep := filepath.Join(root, "infra", "tf", "stacks", "staging", ".terraform-version")
+	if err := os.MkdirAll(filepath.Dir(keep), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keep, []byte("1.9.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	drop := filepath.Join(root, "other", "ignored.txt")
+	if err := os.MkdirAll(filepath.Dir(drop), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(drop, []byte("nope\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ignore := []byte("*\n!/infra/\n!/infra/tf/\n!/infra/tf/**\n")
+	if err := os.WriteFile(filepath.Join(root, ".terraformignore"), ignore, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rules, err := ignorefiles.LoadPackageIgnoreRules(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := filepath.Walk(root, packagePrepareWalkFn(root, rules)); err != nil {
+		t.Fatalf("walk: %s", err)
+	}
+
+	if _, err := os.Lstat(keep); err != nil {
+		t.Errorf("re-included file was removed: %s", err)
+	}
+
+	if _, err := os.Lstat(drop); err == nil {
+		t.Errorf("ignored file still present; should have been removed")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ignored file: %s", err)
 	}
 }
 

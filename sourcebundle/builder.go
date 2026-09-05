@@ -848,31 +848,32 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 			return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 		}
 		if ignored.Excluded {
-			err := os.RemoveAll(absPath)
-			if err != nil {
-				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
+			// A separator-less match can exclude a directory before a
+			// trailing-slash directory negation such as !/infra/ is
+			// evaluated. Only prune a directory when no later negation
+			// can re-include this path or its children.
+			if !info.IsDir() || ignored.Dominating {
+				err := os.RemoveAll(absPath)
+				if err != nil {
+					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
+				}
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			// Account for .terraformignore file rulesets that remove entire subtrees
-			// in order to skip additional reads.
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
 		}
 
 		// For directories we also need to check with a path separator on the
-		// end, which ignores entire subtrees.
-		//
-		// TODO: What about exclusion rules that follow a matching directory?
-		// Example:
-		//   /logs
-		//   !/logs/production/*
+		// end, which ignores entire subtrees. Dominating is required here
+		// too: a later negation such as !/logs/production/* must still be
+		// able to re-include descendants.
 		if info.IsDir() {
 			ignored, err := ignoreRules.Excludes(relPath + string(os.PathSeparator))
 			if err != nil {
 				return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 			}
-			if ignored.Excluded {
+			if ignored.Excluded && ignored.Dominating {
 				err := os.RemoveAll(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
