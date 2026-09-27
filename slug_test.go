@@ -73,7 +73,8 @@ func TestPack_rootIsSymlink(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("target is path: %s", path), func(t *testing.T) {
 			symlinkPath := path + "-symlink"
-			err := os.Symlink(path, symlinkPath)
+			// Target must be relative to the symlink's parent directory.
+			err := os.Symlink(filepath.Base(filepath.Clean(path)), symlinkPath)
 			if err != nil {
 				t.Fatalf("Failed creating dir %s symlink: %v", path, err)
 
@@ -93,6 +94,57 @@ func TestPack_rootIsSymlink(t *testing.T) {
 
 			assertArchiveFixture(t, slug, meta)
 		})
+	}
+}
+
+func TestPack_rootIsRelativeSymlinkFromOtherCwd(t *testing.T) {
+	// Reproduce hashicorp/go-slug#129: Packing through a root symlink whose
+	// target is relative must resolve against the symlink's directory, not
+	// the process working directory.
+	root := t.TempDir()
+	realDir := filepath.Join(root, "work", "projects", "app")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "main.tf"), []byte("# ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(root, "alias")
+	if err := os.Symlink(filepath.Join("work", "projects", "app"), linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd := filepath.Join(root, "cwd")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	slug := bytes.NewBuffer(nil)
+	meta, err := Pack(linkPath, slug, true)
+	if err != nil {
+		t.Fatalf("Pack through relative symlink from other cwd: %v", err)
+	}
+	if len(meta.Files) == 0 {
+		t.Fatal("expected packed files")
+	}
+	found := false
+	for _, f := range meta.Files {
+		if f == "main.tf" || strings.HasSuffix(f, "/main.tf") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("main.tf missing from archive; files=%v", meta.Files)
 	}
 }
 
