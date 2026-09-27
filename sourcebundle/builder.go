@@ -848,33 +848,33 @@ func packagePrepareWalkFn(root string, ignoreRules *ignorefiles.Ruleset) filepat
 			return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 		}
 		if ignored.Excluded {
-			err := os.RemoveAll(absPath)
-			if err != nil {
-				return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
-			}
-			// Account for .terraformignore file rulesets that remove entire subtrees
-			// in order to skip additional reads.
 			if info.IsDir() {
-				return filepath.SkipDir
+				// Only prune the whole tree when no later negation can re-include
+				// paths under it. Otherwise keep walking so directory/negation
+				// rules (including trailing-slash forms) can apply.
+				if ignored.Dominating {
+					if err := os.RemoveAll(absPath); err != nil {
+						return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
+					}
+					return filepath.SkipDir
+				}
+			} else {
+				if err := os.RemoveAll(absPath); err != nil {
+					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
+				}
+				return nil
 			}
-			return nil
 		}
 
 		// For directories we also need to check with a path separator on the
 		// end, which ignores entire subtrees.
-		//
-		// TODO: What about exclusion rules that follow a matching directory?
-		// Example:
-		//   /logs
-		//   !/logs/production/*
 		if info.IsDir() {
 			ignored, err := ignoreRules.Excludes(relPath + string(os.PathSeparator))
 			if err != nil {
 				return fmt.Errorf("invalid .terraformignore rules: %#w", err)
 			}
-			if ignored.Excluded {
-				err := os.RemoveAll(absPath)
-				if err != nil {
+			if ignored.Excluded && ignored.Dominating {
+				if err := os.RemoveAll(absPath); err != nil {
 					return fmt.Errorf("failed to remove ignored file %s: %s", relPath, err)
 				}
 				return filepath.SkipDir
