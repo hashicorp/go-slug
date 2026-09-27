@@ -527,6 +527,56 @@ func TestBuilderTerraformIgnore(t *testing.T) {
 	}
 }
 
+func TestBuilderDirectoryNegation(t *testing.T) {
+	// Reproduce hashicorp/go-slug#136: a broad "*" exclusion followed by
+	// directory negations like "!/infra/" must not prune infra before the
+	// trailing-slash rules are considered.
+	tracer := testBuildTracer{}
+	ctx := tracer.OnContext(context.Background())
+
+	targetDir := t.TempDir()
+	builder := testingBuilder(
+		t, targetDir,
+		map[string]string{
+			"https://example.com/dir-negation.tgz": "testdata/pkgs/dir-negation",
+		},
+		nil,
+		nil,
+	)
+
+	startSource := sourceaddrs.MustParseSource("https://example.com/dir-negation.tgz").(sourceaddrs.RemoteSource)
+	diags := builder.AddRemoteSource(ctx, startSource, noDependencyFinder)
+	if len(diags) > 0 {
+		for _, diag := range diags {
+			t.Errorf("unexpected diagnostic\nSummary: %s\nDetail:  %s", diag.Description().Summary, diag.Description().Detail)
+		}
+		t.Fatal("unexpected diagnostics")
+	}
+
+	bundle, err := builder.Close()
+	if err != nil {
+		t.Fatalf("failed to close bundle: %s", err)
+	}
+
+	localPkgDir, err := bundle.LocalPathForRemoteSource(startSource)
+	if err != nil {
+		t.Fatalf("builder does not know a local directory for %s: %s", startSource.Package(), err)
+	}
+
+	kept := filepath.Join(localPkgDir, "infra", "tf", "stacks", "staging", ".terraform-version")
+	if info, err := os.Lstat(kept); err != nil {
+		t.Errorf("negated path missing: %s", err)
+	} else if !info.Mode().IsRegular() {
+		t.Errorf("negated path is not a regular file")
+	}
+
+	if _, err := os.Lstat(filepath.Join(localPkgDir, "noise.txt")); err == nil {
+		t.Errorf("noise.txt should have been excluded by *")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("noise.txt: unexpected error: %s", err)
+	}
+}
+
 func TestBuilderCoalescePackages(t *testing.T) {
 	tracer := testBuildTracer{}
 	ctx := tracer.OnContext(context.Background())

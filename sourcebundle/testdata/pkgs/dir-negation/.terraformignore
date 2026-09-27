@@ -1,0 +1,4 @@
+*
+!/infra/
+!/infra/tf/
+!/infra/tf/**
