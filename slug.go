@@ -154,16 +154,13 @@ func (p *Packer) Pack(src string, w io.Writer) (*Meta, error) {
 
 	// Check if the root (src) is a symlink
 	if isSymlink(info.Mode()) {
-		link, err := os.Readlink(src)
+		// Resolve the link with filesystem semantics. A relative target is
+		// relative to the symlink's parent, and symlinked parents must be
+		// resolved before any ".." in the target is applied, so a lexical
+		// join is not enough.
+		src, err = filepath.EvalSymlinks(src)
 		if err != nil {
 			return nil, err
-		}
-		// Readlink returns the raw target. A relative target must be
-		// resolved against the symlink's parent, not the process cwd.
-		if filepath.IsAbs(link) {
-			src = link
-		} else {
-			src = filepath.Join(filepath.Dir(src), link)
 		}
 	}
 

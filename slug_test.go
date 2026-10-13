@@ -148,6 +148,84 @@ func TestPack_rootIsRelativeSymlinkFromOtherCwd(t *testing.T) {
 	}
 }
 
+func TestPack_rootSymlinkThroughSymlinkedParent(t *testing.T) {
+	// The root symlink's ".." must be applied after its parent directory
+	// is resolved. A lexical join of "alias/root-link" and "../app" would
+	// select workspace/app instead of workspace/actual/app.
+	//
+	//	workspace/
+	//	├── alias -> actual/nested
+	//	├── actual/
+	//	│   ├── nested/
+	//	│   │   └── root-link -> ../app
+	//	│   └── app/
+	//	│       └── main.tf      (intended)
+	//	└── app/
+	//	    ├── main.tf          (other)
+	//	    └── private.txt
+	workspace := t.TempDir()
+	for _, dir := range []string{"actual/nested", "actual/app", "app"} {
+		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{
+		"actual/app/main.tf": "# intended\n",
+		"app/main.tf":        "# other\n",
+		"app/private.txt":    "secret\n",
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join("actual", "nested"), filepath.Join(workspace, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "app"), filepath.Join(workspace, "actual", "nested", "root-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dereference := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dereference=%t", dereference), func(t *testing.T) {
+			slug := bytes.NewBuffer(nil)
+			if _, err := Pack(filepath.Join(workspace, "alias", "root-link"), slug, dereference); err != nil {
+				t.Fatalf("Pack: %v", err)
+			}
+
+			gzipR, err := gzip.NewReader(slug)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tarR := tar.NewReader(gzipR)
+			files := map[string]string{}
+			for {
+				hdr, err := tarR.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if hdr.Typeflag != tar.TypeReg {
+					continue
+				}
+				data, err := io.ReadAll(tarR)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files[hdr.Name] = string(data)
+			}
+
+			if got := files["main.tf"]; got != "# intended\n" {
+				t.Errorf("main.tf = %q, want %q; archive: %v", got, "# intended\n", files)
+			}
+			if _, ok := files["private.txt"]; ok {
+				t.Errorf("private.txt from the other directory was archived: %v", files)
+			}
+		})
+	}
+}
+
 func TestPack_absoluteSrcRelativeSymlinks(t *testing.T) {
 	var path string
 	var err error
