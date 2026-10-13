@@ -73,7 +73,8 @@ func TestPack_rootIsSymlink(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("target is path: %s", path), func(t *testing.T) {
 			symlinkPath := path + "-symlink"
-			err := os.Symlink(path, symlinkPath)
+			// Target must be relative to the symlink's parent directory.
+			err := os.Symlink(filepath.Base(filepath.Clean(path)), symlinkPath)
 			if err != nil {
 				t.Fatalf("Failed creating dir %s symlink: %v", path, err)
 
@@ -92,6 +93,135 @@ func TestPack_rootIsSymlink(t *testing.T) {
 			}
 
 			assertArchiveFixture(t, slug, meta)
+		})
+	}
+}
+
+func TestPack_rootIsRelativeSymlinkFromOtherCwd(t *testing.T) {
+	// Reproduce hashicorp/go-slug#129: Packing through a root symlink whose
+	// target is relative must resolve against the symlink's directory, not
+	// the process working directory.
+	root := t.TempDir()
+	realDir := filepath.Join(root, "work", "projects", "app")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "main.tf"), []byte("# ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(root, "alias")
+	if err := os.Symlink(filepath.Join("work", "projects", "app"), linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd := filepath.Join(root, "cwd")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	slug := bytes.NewBuffer(nil)
+	meta, err := Pack(linkPath, slug, true)
+	if err != nil {
+		t.Fatalf("Pack through relative symlink from other cwd: %v", err)
+	}
+	if len(meta.Files) == 0 {
+		t.Fatal("expected packed files")
+	}
+	found := false
+	for _, f := range meta.Files {
+		if f == "main.tf" || strings.HasSuffix(f, "/main.tf") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("main.tf missing from archive; files=%v", meta.Files)
+	}
+}
+
+func TestPack_rootSymlinkThroughSymlinkedParent(t *testing.T) {
+	// The root symlink's ".." must be applied after its parent directory
+	// is resolved. A lexical join of "alias/root-link" and "../app" would
+	// select workspace/app instead of workspace/actual/app.
+	//
+	//	workspace/
+	//	├── alias -> actual/nested
+	//	├── actual/
+	//	│   ├── nested/
+	//	│   │   └── root-link -> ../app
+	//	│   └── app/
+	//	│       └── main.tf      (intended)
+	//	└── app/
+	//	    ├── main.tf          (other)
+	//	    └── private.txt
+	workspace := t.TempDir()
+	for _, dir := range []string{"actual/nested", "actual/app", "app"} {
+		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{
+		"actual/app/main.tf": "# intended\n",
+		"app/main.tf":        "# other\n",
+		"app/private.txt":    "secret\n",
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join("actual", "nested"), filepath.Join(workspace, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "app"), filepath.Join(workspace, "actual", "nested", "root-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dereference := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dereference=%t", dereference), func(t *testing.T) {
+			slug := bytes.NewBuffer(nil)
+			if _, err := Pack(filepath.Join(workspace, "alias", "root-link"), slug, dereference); err != nil {
+				t.Fatalf("Pack: %v", err)
+			}
+
+			gzipR, err := gzip.NewReader(slug)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tarR := tar.NewReader(gzipR)
+			files := map[string]string{}
+			for {
+				hdr, err := tarR.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if hdr.Typeflag != tar.TypeReg {
+					continue
+				}
+				data, err := io.ReadAll(tarR)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files[hdr.Name] = string(data)
+			}
+
+			if got := files["main.tf"]; got != "# intended\n" {
+				t.Errorf("main.tf = %q, want %q; archive: %v", got, "# intended\n", files)
+			}
+			if _, ok := files["private.txt"]; ok {
+				t.Errorf("private.txt from the other directory was archived: %v", files)
+			}
 		})
 	}
 }
