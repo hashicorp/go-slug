@@ -198,15 +198,6 @@ func (i UnpackInfo) restoreDirectoryWithRoot(root *os.Root, relPath string) erro
 	return nil
 }
 
-func (i UnpackInfo) restoreSymlinkWithRoot(root *os.Root, relPath string) error {
-	// Note: Go 1.25's os.Root doesn't have Lchtimes, so we fall back to the original method
-	// This is a limitation but still provides some security benefit for other operations
-	if err := i.Lchtimes(); err != nil {
-		return fmt.Errorf("failed setting times on symlink %q: %w", i.Path, err)
-	}
-	return nil
-}
-
 func (i UnpackInfo) restoreNormalWithRoot(root *os.Root, relPath string) error {
 	if err := root.Chmod(relPath, i.OriginalMode); err != nil {
 		return fmt.Errorf("failed setting permissions on %q: %w", i.Path, err)
