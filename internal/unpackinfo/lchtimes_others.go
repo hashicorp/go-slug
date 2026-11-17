@@ -1,18 +1,23 @@
 // Copyright IBM Corp. 2018, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-//go:build !darwin && !linux_amd64 && !linux_arm64 && !linux_amd && !linux_arm
+//go:build !(darwin || (linux && !android && (386 || arm || amd64 || arm64)))
 
 package unpackinfo
 
 import (
 	"errors"
+	"os"
 )
 
 // Lchtimes modifies the access and modified timestamps on a target path
 // This capability is only available on Linux and Darwin as of now.
 func (i UnpackInfo) Lchtimes() error {
 	return errors.New("Lchtimes is not supported on this platform")
+}
+
+func (i UnpackInfo) restoreSymlinkWithRoot(_ *os.Root, _ string) error {
+	return i.Lchtimes()
 }
 
 // CanMaintainSymlinkTimestamps determines whether is is possible to change

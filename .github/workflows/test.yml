@@ -11,6 +11,11 @@ jobs:
       matrix:
         goos: [linux, windows, darwin]
         goarch: ["386", amd64, arm64]
+        include:
+          - goos: linux
+            goarch: arm
+          - goos: linux
+            goarch: riscv64
         exclude:
           - goarch: "386"
             goos: darwin
@@ -24,8 +29,22 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: build
-        run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build
+      - name: Validate timestamp implementation and build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          case "$GOOS/$GOARCH" in
+            linux/386|linux/arm|linux/amd64|linux/arm64) expected=lchtimes_linux.go ;;
+            darwin/*) expected=lchtimes_darwin.go ;;
+            *) expected=lchtimes_others.go ;;
+          esac
+          actual=$(go list -f '{{range .GoFiles}}{{println .}}{{end}}' ./internal/unpackinfo | grep '^lchtimes_')
+          if [ "$actual" != "$expected" ]; then
+            echo "Wrong Lchtimes implementation for $GOOS/$GOARCH: expected $expected, got $actual"
+            exit 1
+          fi
+          go build ./...
 
   unit-test:
     runs-on: ubuntu-latest
@@ -52,4 +71,4 @@ jobs:
       - name: Run Linter
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
-          version: v2.12.2
+          version: v2.13.1

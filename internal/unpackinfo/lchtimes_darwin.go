@@ -6,6 +6,8 @@
 package unpackinfo
 
 import (
+	"os"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -16,6 +18,11 @@ func (i UnpackInfo) Lchtimes() error {
 		{Sec: i.OriginalAccessTime.Unix(), Usec: int32(i.OriginalAccessTime.Nanosecond() / 1e6 % 1e6)},
 		{Sec: i.OriginalModTime.Unix(), Usec: int32(i.OriginalModTime.Nanosecond() / 1e6 % 1e6)}},
 	)
+}
+
+func (i UnpackInfo) restoreSymlinkWithRoot(_ *os.Root, _ string) error {
+	// Retain the existing Darwin path-based fallback; os.Root has no Lchtimes.
+	return i.restoreSymlink()
 }
 
 // CanMaintainSymlinkTimestamps determines whether is is possible to change
